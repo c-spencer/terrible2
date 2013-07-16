@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      .panel {
+        position: absolute;
+        -webkit-box-sizing: border-box;
+           -moz-box-sizing: border-box;
+                box-sizing: border-box;
+        resize: none;
+        padding: 10px;
+        border: 0;
+        font-family: monospace;
+        font-size: 14px;
+        outline: 0;
+      }
+      .output {
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 200px;
+        background: #ddd;
+      }
+      .input {
+        position: absolute;
+        top: 0;
+        bottom: 200px;
+        width: 50%;
+      }
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      #terrible-input {
+        left: 0;
+        right: 50%;
+      }
+      #terrible-output {
+        left: 50%;
+        right: 0;
+        background: #eee;
+      }
+    </style>
+  </head>
+  <body>
+    <textarea class="panel input" id="terrible-input">
+(defn sum
+  ([a] a)
+  ([a b] (+ a b))
+  ([a b & c]
+    (var r [(+ a b c[0])])
+    (sum.apply this (r.concat (c.slice 1)))))
+
+(var arr [1 2 3 4 5])
+
+(print (arr.map #(+ 5 %)))
+
+(print (sum 1))
+(print (sum 3 4))
+(print (sum 4 5 6))
+(print (sum.apply nil [1 2 3 4 5]))
+
+(print """that's a "useful" feature""")
+</textarea>
+    <textarea class="panel input" id="terrible-output"></textarea>
+    <textarea class="panel output" id="terrible-log"></textarea>
+    <script src="./repl-browser.js"></script>
+  </body>
+</html>

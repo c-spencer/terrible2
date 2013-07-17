@@ -10,7 +10,8 @@ function compileTerrible(text) {
   try {
     env.evalText(text);
   } catch (exc) {
-    messages.push(exc.stack ? exc.stack : "");
+    messages.push("! " + (exc.message ? exc.message : exc));
+    messages.push(exc.stack ? ("! " + exc.stack) : "");
   }
 
   return { js: env.asJS(), log: messages };

@@ -48,12 +48,9 @@
   ([a] a)
   ([a b] (+ a b))
   ([a b & c]
-    (var r [(+ a b c[0])])
-    (sum.apply this (r.concat (c.slice 1)))))
+    (sum.apply this (.concat [(+ a b c[0])] (c.slice 1)))))
 
-(var arr [1 2 3 4 5])
-
-(print (arr.map #(+ 5 %)))
+(print (.map [1 2 3 4 5] #(+ 5 %)))
 
 (print (sum 1))
 (print (sum 3 4))

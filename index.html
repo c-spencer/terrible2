@@ -44,20 +44,52 @@
   </head>
   <body>
     <textarea class="panel input" id="terrible-input">
+; Variable declaration
+(var a 1)
+
+; Strings
+(print "docstrings:")
+(print """that's a "useful" feature""")
+
+; Scope sequences of forms
+(do 5 6 7 a)
+(var b (do 5 6 7 a))
+
+; JS-style accessors on variables.
+(var arr [1 2 3])
+(print "arr[(+ 1 1)]:")
+(print arr[(+ 1 1)])
+
+; Variable redeclaration
+(var a 2)
+
+; Functions
+(fn [a] (+ a 1))
+(defn inc [a] (+ a 1))
+
+; Variadic functions
+(fn [a & b] (b.push a))
+
+; Multiple arity functions
 (defn sum
   ([a] a)
   ([a b] (+ a b))
   ([a b & c]
     (sum.apply this (.concat [(+ a b c[0])] (c.slice 1)))))
 
-(print (.map [1 2 3 4 5] #(+ 5 %)))
-
+(print "sum calls:")
 (print (sum 1))
 (print (sum 3 4))
 (print (sum 4 5 6))
 (print (sum.apply nil [1 2 3 4 5]))
 
-(print """that's a "useful" feature""")
+; Everything is an expression
+(print "try/catch:")
+(var t (try (+ 1 2) (catch [exc] 10)))
+(print t)
+
+; But only when it needs to be
+(try (+ 1 2) (catch [exc] (console.log "oh dear")))
 </textarea>
     <textarea class="panel input" id="terrible-output"></textarea>
     <textarea class="panel output" id="terrible-log"></textarea>

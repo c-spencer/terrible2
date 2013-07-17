@@ -343,7 +343,16 @@ builtins = {
 
     walker = walker(env);
 
-    return Terr.If(walker(test), cons ? walker(cons) : undefined, alt ? walker(alt) : undefined);
+    return Terr.If(walker(test), cons ? walker(cons) : undefined,
+                                 alt ? walker(alt) : undefined);
+  },
+
+  ".": function (opts, target, member) {
+    var args = Array.prototype.slice.call(arguments, 3);
+    var walker = opts.walker(opts.env);
+
+    return Terr.Call(Terr.Member(walker(target), Terr.Literal(member.name())),
+                     args.map(walker));
   },
 
   "try": function (opts) {
@@ -468,6 +477,19 @@ walk_handlers = {
     var tail = node.values.slice(1);
 
     if (head && head.type == "Symbol") {
+
+      if (head.name()[0] == "." && head.name() != ".") {
+        walker = walker(env);
+        var target = walker(tail[0]);
+        tail = tail.slice(1).map(walker);
+        head.parts[0] = head.parts[0].substring(1);
+
+        head.parts.forEach(function (p) {
+          target = Terr.Member(target, walker(p));
+        });
+
+        return Terr.Call(target, tail);
+      }
 
       if (head.parts.length > 1) {
         walker = walker(env);

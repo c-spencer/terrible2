@@ -133,9 +133,11 @@ function Environment () {
   this.scope.expose('JSON', JSON);
   this.scope.expose('console', console);
 
-  this.uses = [];
-  this.scope.use(['terrible', 'core'], require('./core'));
-  this.uses.push(['terrible', 'core']);
+  this.scope.expose('core', require('./core'));
+
+  // this.uses = [];
+  // this.scope.use(['terrible', 'core'], require('./core'));
+  // this.uses.push(['terrible', 'core']);
 
   this.ast_nodes = [];
 }

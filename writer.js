@@ -586,6 +586,10 @@ walk_handlers = {
     return root;
   },
 
+  "Keyword": function (node, walker, env) {
+    return Terr.Call(Terr.Identifier("core", ["keyword"]), [Terr.Literal(node.toString())]);
+  },
+
   "ANY": function (node, walker, env) {
     if (Array.isArray(node)) {
       return Terr.Arr(node.map(walker(env)));

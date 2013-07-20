@@ -11,19 +11,46 @@ function EOFError () {}
 function Buffer (string) {
   this.string = string;
   this.pos = 0;
+  this.line = 0;
+  this.col = 0;
 }
 
 Buffer.prototype.read1 = function () {
   if (this.pos === this.string.length) {
     ++this.pos;
+    ++this.col;
     return " ";
   } else if (this.pos > this.string.length) {
     throw new EOFError();
   } else {
     var ch = this.string[this.pos];
     ++this.pos;
+    if (ch == "\n") {
+      ++this.line;
+      this.col = 0;
+    } else {
+      ++this.col;
+    }
     return ch;
   }
+}
+
+Buffer.prototype.getPos = function () {
+  return { line: this.line, column: this.col }
+}
+
+Buffer.prototype.save = function () {
+  return {
+    line: this.line,
+    col: this.col,
+    pos: this.pos
+  }
+}
+
+Buffer.prototype.restore = function (d) {
+  this.line = d.line;
+  this.col = d.col;
+  this.pos = d.pos;
 }
 
 Buffer.prototype.lookahead = function (n) {
@@ -125,7 +152,7 @@ function stringReader (buffer, quote) {
       else if (ch == "b") { ch = "\b"; }
       else if (ch == "f") { ch = "\f"; }
       else if (ch == "\\" || ch == '"') { }
-      else { throw "Unsupported escape \\" + ch }
+      else { throw "Unsupported escape \\" + ch + JSON.stringify(buffer.getPos()) }
     }
 
     str += ch;
@@ -173,10 +200,6 @@ argReader = function (buffer, percent) {
 
   var ch = buffer.lookahead(1);
 
-  function readTrailingSymbol() {
-
-  }
-
   if (this.isWhitespace(ch) || this.isTerminatingMacro(ch)) {
     return registerArg(this, 1);
   } else if (ch == ".") {
@@ -190,14 +213,16 @@ argReader = function (buffer, percent) {
   } else if (this.isDigit(ch)) {
 
     var n = buffer.read1();
+    var buffer_state = buffer.save();
     ch = buffer.read1();
 
     while (this.isDigit(ch)) {
       n += ch;
+      buffer_state = buffer.save();
       ch = buffer.read1();
     }
 
-    buffer.unread(ch);
+    buffer.restore(buffer_state);
 
     var n = parseFloat(n);
 
@@ -220,7 +245,7 @@ argReader = function (buffer, percent) {
   }
 
   if (typeof n != 'number') {
-    throw 'arg literal must be %, %& or %n'
+    throw 'arg literal must be %, %& or %n ' + JSON.stringify(buffer.getPos())
   }
 
   return this.registerArg(n);
@@ -236,7 +261,7 @@ fnReader = function (buffer, openparen) {
   var form = this.read(buffer);
 
   if (originalENV && this.ARG_ENV.length != 0) {
-    throw "Cannot nest lambdas with arguments."
+    throw "Cannot nest lambdas with arguments. " + JSON.stringify(buffer.getPos())
   }
 
   if (this.ARG_ENV.length > 0) {
@@ -330,12 +355,13 @@ Reader.prototype.read = function (buffer) {
     }
 
     if (ch == '+' || ch == '-') {
+      var buffer_state = buffer.save();
       var ch2 = buffer.read1();
       if (this.isDigit(ch2)) {
         var n = this.readNumber(buffer, ch2);
         return core.list(core.symbol(ch), n);
       } else {
-        buffer.unread(ch2);
+        buffer.restore(buffer_state);
       }
     }
 
@@ -345,16 +371,17 @@ Reader.prototype.read = function (buffer) {
 
 Reader.prototype.readNumber = function (buffer, s) {
   while (true) {
+    var buffer_state = buffer.save();
     var ch = buffer.read1();
     if (this.isWhitespace(ch) || this.macros[ch]) {
-      buffer.unread(ch);
+      buffer.restore(buffer_state);
       break;
     }
     s += ch;
   }
 
   if (!this.isNumber(s)) {
-    throw "Invalid number: " + s
+    throw "Invalid number: " + s + " " + JSON.stringify(buffer.getPos())
   }
 
   return parseFloat(s);
@@ -374,9 +401,10 @@ Reader.prototype.readToken = function (buffer, s) {
   if (s == ":") { // keyword
     var kw = "";
     while (true) {
+      buffer_state = buffer.save();
       ch = buffer.read1();
       if (this.isWhitespace(ch) || this.isTerminatingMacro(ch)) {
-        buffer.unread(ch);
+        buffer.restore(buffer_state);
         if (kw === "") {
           return core.symbol(s);
         } else {
@@ -387,7 +415,7 @@ Reader.prototype.readToken = function (buffer, s) {
     }
   }
 
-  var left = null, $this = this;
+  var left = null, $this = this, buffer_state;
 
   var addSymbolComponent = function (s) {
     if (left == null) {
@@ -402,6 +430,7 @@ Reader.prototype.readToken = function (buffer, s) {
   }
 
   while (true) {
+    buffer_state = buffer.save();
     ch = buffer.read1()
 
     if (ch == "[") {
@@ -410,8 +439,11 @@ Reader.prototype.readToken = function (buffer, s) {
 
       var form = this.read(buffer);
       ch = buffer.read1();
+      while (this.isWhitespace(ch)) {
+        ch = buffer.read1();
+      }
       if (ch != "]") {
-        throw "Unexpected symbol form";
+        throw "Unexpected symbol form " + JSON.stringify(buffer.getPos());
       } else {
         addSymbolComponent(form);
         continue
@@ -419,7 +451,7 @@ Reader.prototype.readToken = function (buffer, s) {
     }
 
     if (this.isWhitespace(ch) || this.isTerminatingMacro(ch)) {
-      buffer.unread(ch);
+      buffer.restore(buffer_state);
       return addSymbolComponent(s);
     }
 
@@ -434,16 +466,21 @@ Reader.prototype.readToken = function (buffer, s) {
 }
 
 Reader.prototype.readDelimitedList = function (endchar, buffer) {
-  var forms = [], ch, macro, ret;
+  var forms = [], ch, macro, ret, buffer_state;
   while (true) {
-    while (this.isWhitespace(ch = buffer.read1()));
+    buffer_state = buffer.save();
+    ch = buffer.read1();
+    while (this.isWhitespace(ch)) {
+      buffer_state = buffer.save();
+      ch = buffer.read1();
+    }
 
     if (ch === endchar) break;
 
     if (macro = this.macros[ch]) {
       ret = macro.call(this, buffer, ch);
     } else {
-      buffer.unread(ch);
+      buffer.restore(buffer_state);
       ret = this.read(buffer);
     }
     if (ret != buffer) {
@@ -465,15 +502,15 @@ Reader.prototype.newReadSession = function () {
   return {
     readString: function (str) {
       buffer.append(str);
-      var forms = [], starting_pos = buffer.pos;
+      var forms = [], buffer_state = buffer.save();
       try {
         while (form = reader.read(buffer)) {
           forms.push(form);
-          starting_pos = buffer.pos;
+          buffer_state = buffer.save();
         }
       } catch (exception) {
         if (exception instanceof EOFError) {
-          buffer.pos = starting_pos;
+          buffer.restore(buffer_state);
           return forms;
         } else {
           throw exception;

@@ -6487,6 +6487,9 @@ builtins = {
       // js stack is only needed for the presence check, not the metadata.
 
       if (env.scope.jsScoped(munged_name)) {
+        if (env.scope.logicalScoped(munged_name)) {
+          throw "Cannot redeclare var " + id.name()
+        }
         var js_name = ID.gen(munged_name);
       } else {
         var js_name = munged_name;

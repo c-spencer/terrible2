@@ -6,138 +6,102 @@ var Terr = require('./terr-ast')
 
 // Scopes
 
-function Scope (ns, logical_stack, js_stack) {
-  this.ns = ns;
-  this.logical_stack = logical_stack;
-  this.js_stack = js_stack;
+function Scope (parent) {
+  this.parent = parent;
+  this.logical_frame = {};
+  this.js_frame = {};
 }
 
 Scope.prototype.addSymbol = function (name, metadata) {
-  this.logical_stack[this.logical_stack.length - 1][name] = metadata;
-  this.js_stack[this.js_stack.length - 1][name] = metadata;
+  this.logical_frame[name] = metadata;
+  this.js_frame[name] = metadata;
 }
 
 Scope.prototype.newScope = function (logical, js) {
-  var new_logical = logical ? this.cloneStack(this.logical_stack) : this.logical_stack;
-  var new_js = js ? this.cloneStack(this.js_stack) : this.js_stack;
-  return new Scope(this.ns, new_logical, new_js);
-}
-
-Scope.prototype.aggregateScope = function () {
-  var scope = {};
-  for (var i = 0, len = this.logical_stack.length; i < len; ++i) {
-    for (var k in this.logical_stack[i]) {
-      if (this.logical_stack[i][k].import) {
-        continue;
-      }
-      scope[k] = this.logical_stack[i][k].value;
-    }
-  }
-  console.log("aggregate scope", scope);
-  return scope;
-}
-
-Scope.prototype.cloneStack = function (stack) {
-  var new_stack = []
-  stack.forEach(function (level) {
-    var new_level = {};
-    Object.keys(level).forEach(function (key) {
-      new_level[key] = level[key];
-    })
-    new_stack.push(new_level);
-  });
-  // Add new layer to the top
-  new_stack.push({});
-  return new_stack;
+  return new Scope(this);
 }
 
 Scope.prototype.resolve = function (name) {
-  var i = this.logical_stack.length - 1;
-  while (i >= 0) {
-    if (this.logical_stack[i][name]) {
-      return this.logical_stack[i][name];
-    }
-    i -= 1;
+  if (this.logical_frame[name]) {
+    return this.logical_frame[name];
+  } else {
+    return this.parent ? this.parent.resolve(name) : false;
   }
-  return false;
 }
 
 Scope.prototype.jsScoped = function (name) {
-  return this.js_stack[this.js_stack.length - 1][name] != null
+  return this.js_frame[name] != null
 }
 
 Scope.prototype.jsScope = function (predicate) {
-  var jss = this.js_stack[this.js_stack.length - 1];
-  return Object.keys(jss).filter(function (k) {
-    return predicate(jss[k]);
+  return Object.keys(this.js_frame).filter(function (k) {
+    return predicate(this.js_frame[k]);
   });
 }
 
 Scope.prototype.logicalScoped = function (name) {
-  return this.logical_stack[this.logical_stack.length - 1][name] != null
+  return this.logical_frame[name] != null
 }
 
 Scope.prototype.update = function (name, attrs) {
-  var i = this.logical_stack.length - 1;
-  while (i >= 0) {
-    if (this.logical_stack[i][name]) {
-      for (var k in attrs) {
-        this.logical_stack[i][name][k] = attrs[k];
-      }
-      return;
+  if (this.logical_frame[name]) {
+    for (var k in attrs) {
+      this.logical_frame[name][k] = attrs[k];
     }
-    i -= 1;
+  } else {
+    return this.parent ? this.parent.update(name, attrs) : false;
   }
-  return false;
-}
-
-Scope.prototype.inJsScope = function (name) {
-  return this.js_stack[this.js_stack.length - 1][name] != null
 }
 
 Scope.prototype.expose = function (name, value) {
-  this.logical_stack[0][name] = {
+  this.logical_frame[name] = {
     type: 'any',
     accessor: JS.Identifier(name),
     value: value
   };
 };
 
-Scope.prototype.use = function (root, map) {
+Scope.prototype.refer = function (root, map) {
 
-  var root_name = "use$" + root.join("$");
+  var root_name = "refer$" + root.join("$");
   var root = Terr.Identifier(root_name);
 
   for (var k in map) {
-    this.logical_stack[0][k] = {
+    this.logical_frame[k] = {
       type: 'any',
-      import: true,
+      export: false,
       accessor: Terr.Member(root, Terr.Literal(k)),
-      value: map[k]
+      value: map[k],
+      namespace: root
     }
   }
 
-  this.logical_stack[0][root_name] = {
+  this.logical_frame[root_name] = this.js_frame[root_name] = {
     type: 'any',
     accessor: root,
     value: map
   };
 };
 
+Scope.prototype.exports = function () {
+  var lf = this.logical_frame;
+  return Object.keys(lf).filter(function (k) {
+    return lf[k].export;
+  }).map(function(k) {
+    return {name: k, data: lf[k]};
+  });
+}
+
 // Environments
 
 function Environment () {
   this.readSession = reader.Reader.newReadSession();
-  this.scope = new Scope(['user'], [{}], [{}]);
+  this.scope = new Scope();
   this.scope.expose('Array', Array);
   this.scope.expose('JSON', JSON);
   this.scope.expose('console', console);
 
-  this.scope.expose('core', require('./core'));
-
-  // this.uses = [];
-  // this.scope.use(['terrible', 'core'], require('./core'));
-  // this.uses.push(['terrible', 'core']);
+  this.scope.refer(['terrible', 'core'], require('./core'));
 
   this.ast_nodes = [];
 }
@@ -169,7 +133,16 @@ Environment.prototype.asJS = function () {
 
   var terr_ast = this.ast_nodes;
 
-  var js_ast = Terr.CompileToJS(Terr.Seq(terr_ast), "statement");
+  terr_ast.push(Terr.Return(Terr.Obj(this.scope.exports().map(function (exported) {
+    return {
+      key: exported.name,
+      value: exported.data.accessor
+    }
+  }))));
+
+  terr_ast = Terr.Fn([Terr.Seq(terr_ast)], [0], null);
+
+  var js_ast = Terr.CompileToJS(terr_ast, "statement");
 
   // console.log("asJS", require('util').inspect(js_ast, false, 20));
 

@@ -108,7 +108,11 @@ builtins = {
         var js_name = munged_name;
       }
 
-      env.scope.addSymbol(munged_name, { type: 'any', accessor: Terr.Identifier(js_name) });
+      env.scope.addSymbol(munged_name, {
+        type: 'any',
+        accessor: Terr.Identifier(js_name),
+        export: false
+      });
 
       // TOTHINK: Treat value as a new scope?
 
@@ -155,7 +159,11 @@ builtins = {
         var js_name = munged_name;
       }
 
-      env.scope.addSymbol(munged_name, { type: 'any', accessor: Terr.Identifier(js_name) });
+      env.scope.addSymbol(munged_name, {
+        type: 'any',
+        accessor: Terr.Identifier(js_name),
+        export: true
+      });
 
       id = walker(env)(id);
 
@@ -285,7 +293,12 @@ builtins = {
 
     symbs.forEach(function (symb) {
       var munged = mungeSymbol(symb.name());
-      env.scope.addSymbol(munged, { type: 'any', import: true, accessor: Terr.Identifier(munged) });
+      env.scope.addSymbol(munged, {
+        type: 'any',
+        export: false,
+        external: true,
+        accessor: Terr.Identifier(munged)
+      });
     });
 
     return Terr.Seq([]);
@@ -409,7 +422,15 @@ function compile_eval (node, scope) {
   // side effects.
 
   // Get an aggregated map of the current scope.
-  var agg = scope.aggregateScope();
+  var frame = scope.logical_frame;
+  var to_rescope = Object.keys(scope.logical_frame).filter(function (key) {
+    return !frame[key].external;
+  });
+
+  var agg = {};
+  to_rescope.forEach(function (key) {
+    agg[key] = frame[key].value;
+  });
 
   var to_rescope = Object.keys(agg);
 
@@ -587,7 +608,10 @@ walk_handlers = {
   },
 
   "Keyword": function (node, walker, env) {
-    return Terr.Call(Terr.Identifier("core", ["keyword"]), [Terr.Literal(node.toString())]);
+    return Terr.Call(
+      Terr.Identifier("refer$terrible$core", ["keyword"]),
+      [Terr.Literal(node.toString())]
+    );
   },
 
   "ANY": function (node, walker, env) {

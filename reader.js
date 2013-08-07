@@ -401,8 +401,8 @@ Reader.prototype.readToken = function (buffer, s) {
   if (s == ":") { // keyword
     var kw = "";
     while (true) {
-      buffer_state = buffer.save();
-      ch = buffer.read1();
+      var buffer_state = buffer.save();
+      var ch = buffer.read1();
       if (this.isWhitespace(ch) || this.isTerminatingMacro(ch)) {
         buffer.restore(buffer_state);
         if (kw === "") {
@@ -413,55 +413,16 @@ Reader.prototype.readToken = function (buffer, s) {
       }
       kw += ch;
     }
-  }
-
-  var left = null, $this = this, buffer_state;
-
-  var addSymbolComponent = function (s) {
-    if (left == null) {
-      left = $this.reifySymbol(s);
-      return left;
-    } else if (s === "") {
-      return left;
-    } else {
-      left.addComponent(s);
-      return left;
-    }
-  }
-
-  while (true) {
-    buffer_state = buffer.save();
-    ch = buffer.read1()
-
-    if (ch == "[") {
-      addSymbolComponent(s);
-      s = "";
-
-      var form = this.read(buffer);
-      ch = buffer.read1();
-      while (this.isWhitespace(ch)) {
-        ch = buffer.read1();
+  } else { // symbol
+    while (true) {
+      var buffer_state = buffer.save();
+      var ch = buffer.read1();
+      if (this.isWhitespace(ch) || this.isTerminatingMacro(ch)) {
+        buffer.restore(buffer_state);
+        return this.reifySymbol(s);
       }
-      if (ch != "]") {
-        throw "Unexpected symbol form " + JSON.stringify(buffer.getPos());
-      } else {
-        addSymbolComponent(form);
-        continue
-      }
+      s += ch;
     }
-
-    if (this.isWhitespace(ch) || this.isTerminatingMacro(ch)) {
-      buffer.restore(buffer_state);
-      return addSymbolComponent(s);
-    }
-
-    if (ch == ".") {
-      addSymbolComponent(s);
-      s = "";
-      continue;
-    }
-
-    s += ch;
   }
 }
 

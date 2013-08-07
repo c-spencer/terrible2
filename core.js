@@ -18,18 +18,15 @@ function List() {
 }
 exports.list = List;
 
-function Symbol() {
-  var args = Array.prototype.slice.apply(arguments);
+function Symbol(name) {
   if (this instanceof Symbol) {
-    this.parts = args;
+    this.name = name;
   } else {
-    return new (Function.prototype.bind.apply(Symbol, [null].concat(args)));
+    return new Symbol(name);
   }
 }
 Symbol.prototype.type = "Symbol";
-Symbol.prototype.toString = function () { return this.name(); };
-Symbol.prototype.addComponent = function (c) { this.parts.push(c); }
-Symbol.prototype.name = function () { return this.parts[0]; }
+Symbol.prototype.toString = function () { return this.name; };
 exports.symbol = Symbol;
 
 function Keyword (name) {

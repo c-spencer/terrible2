@@ -56,6 +56,83 @@ function makeUnary (op) {
   }
 }
 
+function parseSymbol (symb) {
+  var pos = 0;
+  var ch = symb[pos++];
+  var ns = null;
+  var parts = [];
+  var root = null;
+  var part = "";
+  var no_ns = false;
+
+  if (ch === ".") {
+    if (symb[1] === undefined || symb[1] === ".") {
+      return {
+        namespace: ns,
+        root: symb,
+        parts: parts
+      }
+    } else {
+      root = "";
+      ch = symb[pos++];
+    }
+  }
+
+  while (ch !== undefined) {
+    if (ch === ".") {
+      if (part === "") {
+        throw "Couldn't parse symbol `" + symb + "`"
+      }
+      if (root === null) {
+        root = part;
+        part = "";
+      } else {
+        parts.push(part);
+        part = "";
+      }
+    } else if (ch == "/" && no_ns === false) {
+      if (pos === 1) {
+        no_ns = true;
+        part += ch;
+      } else if (ns === null && pos !== 1) {
+        ns = symb.slice(0, pos - 1);
+        part = "";
+        parts = [];
+      } else {
+        throw "Couldn't parse symbol `" + symb + "`"
+      }
+    } else {
+      part += ch;
+    }
+    ch = symb[pos++];
+  }
+
+  if (root === null) {
+    root = part;
+  } else {
+    parts.push(part);
+  }
+
+  return {
+    namespace: ns,
+    root: root,
+    parts: parts
+  }
+}
+
+function testParse (s) {
+  console.log(s, JSON.stringify(parseSymbol(s)));
+}
+
+testParse("a");
+testParse("a.b.c");
+testParse("a.b/a.b");
+testParse("/");
+testParse("//");
+testParse("/.6");
+testParse(".");
+testParse(".concat.apply");
+
 builtins = {
 
   '=': makeBinary('==='),
@@ -83,6 +160,11 @@ builtins = {
     return Terr.Return(arg ? walker(arg) : undefined);
   },
 
+  'get': function (opts, target, arg) {
+    var walker = opts.walker(opts.env);
+    return Terr.Member(walker(target), walker(arg));
+  },
+
   "var": function (opts, id, val) {
     var walker = opts.walker,
         env = opts.env;
@@ -91,8 +173,14 @@ builtins = {
       throw "First argument to var must be symbol."
     }
 
-    if (id.parts.length == 1) {
-      var munged_name = mungeSymbol(id.name());
+    var parsed_id = parseSymbol(id.name);
+
+    if (parsed_id.namespace) {
+      throw "Cannot var into another namespace."
+    }
+
+    if (parsed_id.parts.length === 0) {
+      var munged_name = mungeSymbol(parsed_id.root);
 
       // If there is already a var with the same name in the JS scope, generate a new
       // name to avoid overwriting it. The scope always returns from the logical stack
@@ -101,7 +189,7 @@ builtins = {
 
       if (env.scope.jsScoped(munged_name)) {
         if (env.scope.logicalScoped(munged_name)) {
-          throw "Cannot redeclare var " + id.name()
+          throw "Cannot redeclare var " + id.name
         }
         var js_name = ID.gen(munged_name);
       } else {
@@ -150,8 +238,14 @@ builtins = {
       throw "First argument to def must be symbol."
     }
 
-    if (id.parts.length == 1) {
-      var munged_name = mungeSymbol(id.name());
+    var parsed_id = parseSymbol(id.name);
+
+    if (parsed_id.namespace) {
+      throw "Cannot def into another namespace."
+    }
+
+    if (parsed_id.parts.length === 0) {
+      var munged_name = mungeSymbol(parsed_id.root);
 
       if (env.scope.jsScoped(munged_name)) {
         var js_name = ID.gen(munged_name);
@@ -201,18 +295,31 @@ builtins = {
       for (var i = 0, len = args.length; i < len; ++i) {
         var arg = args[i];
 
-        if (arg.type == "Symbol" && arg.parts.length == 1) {
-          if (arg.name() == "&") {
+        if (arg.type !== "Symbol") {
+          throw "Invalid formal arg " + arg;
+        }
+
+        var parsed_arg = parseSymbol(arg.name);
+
+        if (parsed_arg.parts.length === 0) {
+          if (parsed_arg.root == "&") {
             rest_arg = args[i + 1];
-            if (!rest_arg || rest_arg.type != "Symbol" || rest_arg.parts.length != 1) {
+
+            if (!rest_arg || rest_arg.type !== "Symbol") {
+              throw "Invalid rest arg " + rest_arg;
+            }
+
+            var parsed_rest_arg = parseSymbol(rest_arg.name);
+
+            if (parsed_rest_arg.parts.length !== 0) {
               throw "Invalid rest arg " + rest_arg;
             }
             if (i + 2 != args.length) {
-              throw "Can only set arg after & rest"
+              throw "Too many args following rest &"
             }
             break;
           } else {
-            var munged_name = mungeSymbol(arg.name());
+            var munged_name = mungeSymbol(parsed_arg.root);
             var node = Terr.Identifier(munged_name);
             fn_env.scope.addSymbol(munged_name, { type: 'any', implicit: true, accessor: node });
             formal_args.push(node);
@@ -227,7 +334,7 @@ builtins = {
 
       if (rest_arg) {
         body.unshift(core.list(core.symbol("var"), rest_arg,
-          core.list(core.symbol("Array", "prototype", "slice", "call"),
+          core.list(core.symbol("Array.prototype.slice.call"),
             core.symbol("arguments"), formal_args.length)));
       }
 
@@ -502,26 +609,27 @@ walk_handlers = {
 
     if (head && head.type == "Symbol") {
 
-      if (head.name()[0] == "." && head.name() != ".") {
+      var parsed_head = parseSymbol(head.name);
+
+      if (parsed_head.root == "") {
         walker = walker(env);
         var target = walker(tail[0]);
         tail = tail.slice(1).map(walker);
-        head.parts[0] = head.parts[0].substring(1);
 
-        head.parts.forEach(function (p) {
+        parsed_head.parts.forEach(function (p) {
           target = Terr.Member(target, walker(p));
         });
 
         return Terr.Call(target, tail);
       }
 
-      if (head.parts.length > 1) {
+      if (parsed_head.parts.length > 0) {
         walker = walker(env);
         var ret = Terr.Call(walker(head), tail.map(walker))
         return ret;
       }
 
-      var name = head.name();
+      var name = parsed_head.root;
 
       if (builtins[name]) {
         return builtins[name].apply(null, [{
@@ -582,26 +690,27 @@ walk_handlers = {
   "Symbol": function (node, walker, env) {
 
     if (env.quoted) {
-      var quoted_walker = walker(env);
-      var unquoted_walker = walker(env.setQuoted(false));
+      walker = walker(env.setQuoted(false));
       return Terr.Call(
-        unquoted_walker(core.symbol('symbol')),
-        node.parts.map(quoted_walker)
+        walker(core.symbol('symbol')),
+        [node.name]
       )
     }
 
-    var resolved = env.scope.resolve(mungeSymbol(node.name()));
+    var parsed_node = parseSymbol(node.name);
+
+    var resolved = env.scope.resolve(mungeSymbol(parsed_node.root));
 
     if (!resolved) {
       console.trace();
-      throw "Couldn't resolve `" + node.name() + "`";
+      throw "Couldn't resolve `" + node.name + "`";
     }
 
     var root = resolved.accessor;
     var walker = walker(env);
 
-    for (var i = 1, len = node.parts.length; i < len; ++i) {
-      root = Terr.Member(root, walker(node.parts[i]));
+    for (var i = 0, len = parsed_node.parts.length; i < len; ++i) {
+      root = Terr.Member(root, walker(parsed_node.parts[i]));
     }
 
     return root;

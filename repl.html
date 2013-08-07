@@ -48,7 +48,7 @@
   ([a] a)
   ([a b] (+ a b))
   ([a b & c]
-    (sum.apply this (.concat [(+ a b c[0])] (c.slice 1)))))
+    (sum.apply this (.concat [(+ a b (get c 0))] (c.slice 1)))))
 
 (print (.map [1 2 3 4 5] #(+ 5 %)))
 

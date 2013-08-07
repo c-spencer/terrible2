@@ -55,7 +55,7 @@ Environment.prototype.asJS = function () {
   var seq = Terr.Seq([]);
 
   for (var i = 0; i < this.namespaces.length; ++i) {
-    seq.values.push(Terr.Seq(this.namespaces[0].ast_nodes));
+    seq.values.push(Terr.Seq(this.namespaces[i].ast_nodes));
   }
 
   var js_ast = Terr.CompileToJS(seq, "statement");
@@ -5656,7 +5656,7 @@ builtins = {
       if (env.scope.jsScoped(munged_name)) {
         var js_name = ID.gen(munged_name);
       } else {
-        var js_name = mungeSymbol(ns_name) + "$" + munged_name;
+        var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + munged_name;
       }
 
       env.scope.addSymbol(munged_name, {
@@ -5818,7 +5818,7 @@ builtins = {
   },
 
   "ns": function (opts, ns) {
-    opts.env.scope.ns = ns.parts;
+    opts.env.env.current_namespace = opts.env.env.getNamespace(ns.name);
 
     return Terr.Seq([]);
   },

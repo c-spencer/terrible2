@@ -238,7 +238,7 @@ builtins = {
       if (env.scope.jsScoped(munged_name)) {
         var js_name = ID.gen(munged_name);
       } else {
-        var js_name = mungeSymbol(ns_name) + "$" + munged_name;
+        var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + munged_name;
       }
 
       env.scope.addSymbol(munged_name, {
@@ -400,7 +400,7 @@ builtins = {
   },
 
   "ns": function (opts, ns) {
-    opts.env.scope.ns = ns.parts;
+    opts.env.env.current_namespace = opts.env.env.getNamespace(ns.name);
 
     return Terr.Seq([]);
   },

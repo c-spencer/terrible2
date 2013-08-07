@@ -54,7 +54,7 @@ Environment.prototype.asJS = function () {
   var seq = Terr.Seq([]);
 
   for (var i = 0; i < this.namespaces.length; ++i) {
-    seq.values.push(Terr.Seq(this.namespaces[0].ast_nodes));
+    seq.values.push(Terr.Seq(this.namespaces[i].ast_nodes));
   }
 
   var js_ast = Terr.CompileToJS(seq, "statement");

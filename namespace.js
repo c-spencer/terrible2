@@ -1,8 +1,5 @@
-var reader = require('./reader')
-var writer = require('./writer')
-var codegen = require('escodegen')
-var JS = require('./js')
-var Terr = require('./terr-ast')
+var JS = require('./js');
+var Terr = require('./terr-ast');
 
 // Scopes
 
@@ -34,9 +31,26 @@ Scope.prototype.jsScoped = function (name) {
 }
 
 Scope.prototype.jsScope = function (predicate) {
-  return Object.keys(this.js_frame).filter(function (k) {
-    return predicate(this.js_frame[k]);
+  var logical_frame = this.logical_frame;
+  var this_map = {};
+
+  Object.keys(logical_frame).filter(function (k) {
+    if (predicate(logical_frame[k])) {
+      this_map[k] = logical_frame[k];
+    }
   });
+
+  if (this.parent) {
+    var upper_map = this.parent.jsScope(predicate);
+
+    Object.keys(this_map).forEach(function (k) {
+      upper_map[k] = this_map[k];
+    });
+
+    return upper_map;
+  } else {
+    return this_map;
+  }
 }
 
 Scope.prototype.logicalScoped = function (name) {
@@ -92,64 +106,18 @@ Scope.prototype.exports = function () {
   });
 }
 
-// Environments
+// Namespaces
 
-function Environment () {
-  this.readSession = reader.Reader.newReadSession();
-  this.scope = new Scope();
-  this.scope.expose('Array', Array);
-  this.scope.expose('JSON', JSON);
-  this.scope.expose('console', console);
+function Namespace (name, scope) {
+  this.name = name;
+  this.scope = scope;
 
   this.scope.refer(['terrible', 'core'], require('./core'));
 
   this.ast_nodes = [];
 }
 
-Environment.prototype.evalText = function (text) {
-  var forms = this.readSession.readString(text);
-
-  for (var i = 0, len = forms.length; i < forms.length; ++i) {
-    var form = forms[i];
-    // console.log("\n<== Start Form ==>")
-    // console.log(form);
-    // console.log(reader.printString(form))
-    // console.log("<== Start Generated ==>")
-    this.ast_nodes = this.ast_nodes.concat(writer.process(form, this.scope, false));
-    // console.log("<== End Generated ==>\n")
-  }
-}
-
-Environment.prototype.evalFile = function (path) {
-  this.evalText(require('fs').readFileSync(path));
-}
-
-Environment.prototype.asJS = function () {
-
-  // Hoist experiment
-  // var terr_ast = this.scope.jsScope(function (m) { return !m.implicit && !m.import; }).map(function (v) {
-  //   return Terr.Var(Terr.Identifier(v));
-  // }).concat(this.ast_nodes);
-
-  var terr_ast = this.ast_nodes;
-
-  terr_ast.push(Terr.Return(Terr.Obj(this.scope.exports().map(function (exported) {
-    return {
-      key: exported.name,
-      value: exported.data.accessor
-    }
-  }))));
-
-  terr_ast = Terr.Fn([Terr.Seq(terr_ast)], [0], null);
-
-  var js_ast = Terr.CompileToJS(terr_ast, "statement");
-
-  // console.log("asJS", require('util').inspect(js_ast, false, 20));
-
-  return codegen.generate(JS.Program(js_ast));
-}
-
-// var env = new Environment();
+// var env = new Namespace();
 // env.evalFile('jsbench.terr');
 // env.evalFile('core.terr');
 // env.evalText('(defn f ([a] a) ([a b] b) ([a & b] b)) (f 5) (f 5 6) (f 5 6 7)');
@@ -166,4 +134,5 @@ Environment.prototype.asJS = function () {
 // env.evalText("(fn [] (if (do 6 7) 7 (do 8 9)))")
 // console.log(env.asJS())
 
-exports.Environment = Environment;
+exports.Namespace = Namespace;
+exports.Scope = Scope;

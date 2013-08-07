@@ -1,4 +1,4 @@
-var Environment = require('./env').Environment;
+var Environment = require('./Environment').Environment;
 
 function compileTerrible(text) {
   var env = new Environment();

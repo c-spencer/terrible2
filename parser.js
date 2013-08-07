@@ -120,19 +120,6 @@ function parseSymbol (symb) {
   }
 }
 
-function testParse (s) {
-  console.log(s, JSON.stringify(parseSymbol(s)));
-}
-
-testParse("a");
-testParse("a.b.c");
-testParse("a.b/a.b");
-testParse("/");
-testParse("//");
-testParse("/.6");
-testParse(".");
-testParse(".concat.apply");
-
 builtins = {
 
   '=': makeBinary('==='),
@@ -245,12 +232,13 @@ builtins = {
     }
 
     if (parsed_id.parts.length === 0) {
+      var ns_name = opts.env.env.current_namespace.name;
       var munged_name = mungeSymbol(parsed_id.root);
 
       if (env.scope.jsScoped(munged_name)) {
         var js_name = ID.gen(munged_name);
       } else {
-        var js_name = munged_name;
+        var js_name = mungeSymbol(ns_name) + "$" + munged_name;
       }
 
       env.scope.addSymbol(munged_name, {
@@ -518,7 +506,7 @@ builtins = {
   }
 }
 
-function compile_eval (node, scope) {
+function compile_eval (node, env) {
 
   // Compilation/evalution strategy:
   // Take a known scope, and extract exposed variables in that scope an env map,
@@ -528,18 +516,24 @@ function compile_eval (node, scope) {
   // correctly initialises new variables, as well as updating others through
   // side effects.
 
+  var scope = env.current_namespace.scope;
+
   // Get an aggregated map of the current scope.
-  var frame = scope.logical_frame;
-  var to_rescope = Object.keys(scope.logical_frame).filter(function (key) {
-    return !frame[key].external;
+  var frame = scope.jsScope(function (entry) {
+    return !entry.external;
   });
 
+  var to_scope = Object.keys(frame);
+
+  var unmap = {};
   var agg = {};
-  to_rescope.forEach(function (key) {
-    agg[key] = frame[key].value;
+  to_scope.forEach(function (key) {
+    var js_name = frame[key].accessor.name || key;
+    unmap[js_name] = key;
+    agg[js_name] = frame[key].value;
   });
 
-  var to_rescope = Object.keys(agg);
+  var to_rescope = Object.keys(unmap);
 
   var compile_nodes = Terr.CompileToJS(node, "return");
 
@@ -557,7 +551,7 @@ function compile_eval (node, scope) {
 
   // Update the scope values.
   to_rescope.forEach(function (k) {
-    scope.update(k, { value: agg[k] });
+    scope.update(unmap[k], { value: agg[k] });
   });
 
   return ret;
@@ -585,7 +579,7 @@ var macros = {
   "varfn": function (name) {
     var body = Array.prototype.slice.call(arguments, 1);
     return core.list(
-      core.symbol('set!'),
+      core.symbol('var'),
       name,
       core.list.apply(null, [core.symbol('fn')].concat(body))
     )
@@ -744,29 +738,30 @@ walk_handlers = {
   }
 }
 
-function WalkingEnv(scope, quoted) {
+function WalkingEnv(env, scope, quoted) {
+  this.env = env;
   this.scope = scope;
   this.quoted = quoted;
 }
 
 WalkingEnv.prototype.newScope = function (logical, js) {
-  return new WalkingEnv(this.scope.newScope(logical, js), this.quoted);
+  return new WalkingEnv(this.env, this.scope.newScope(logical, js), this.quoted);
 }
 
 WalkingEnv.prototype.setQuoted = function (quoted) {
-  return new WalkingEnv(this.scope.newScope(false, false), quoted);
+  return new WalkingEnv(this.env, this.scope.newScope(false, false), quoted);
 }
 
-function process_form (form, scope, quoted) {
+function process_form (form, env, quoted) {
   form.topLevel = true;
 
   // console.log("form", require('util').inspect(form, false, 20));
 
-  var walking_env = new WalkingEnv(scope, quoted, {});
+  var walking_env = new WalkingEnv(env, env.current_namespace.scope, quoted);
 
   var ast = walker(walk_handlers, form, walking_env);
   // console.log("ast", require('util').inspect(ast, false, 20));
-  var value = compile_eval(ast, scope);
+  var value = compile_eval(ast, env);
 
   // console.log(require('util').inspect(scope, false, 10));
 

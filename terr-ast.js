@@ -7,7 +7,10 @@ var compilers = {
     fields: ['bodies', 'arities', 'variadic'],
     compile: function (node, mode) {
       var bodies = node.arities.map(function (k) {
-        return Terr.CompileToJS(node.bodies[k], "expression")
+        if (node.$noReturn) {
+          node.bodies[k].$noReturn = true;
+        }
+        return Terr.CompileToJS(node.bodies[k], "expression");
       });
 
       if (node.id) {
@@ -31,9 +34,9 @@ var compilers = {
             return [JS.ExpressionStatement(fn)];
           }
         } else if (mode == "return") {
-          return [JS.Return(bodies[0])];
+          return [JS.Return(fn)];
         } else if (mode == "expression") {
-          return bodies[0];
+          return fn;
         }
       } else {
 
@@ -124,7 +127,7 @@ var compilers = {
     compile: function (node, mode) {
       return JS.FunctionExpression(
         node.args.map(function (n) { return Terr.CompileToJS(n, "expression"); }),
-        Terr.CompileToJS(node.body, "return")
+        Terr.CompileToJS(node.body, node.$noReturn ? "statement" : "return")
       )
     }
   },

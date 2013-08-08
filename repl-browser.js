@@ -80,6 +80,12 @@ Environment.prototype.asJS = function (mode) {
     }
   }
 
+  if (this.target === "browser") {
+    var fn = Terr.Fn([Terr.SubFn([], seq, 0)], [0], null);
+    fn.$noReturn = true;
+    seq = Terr.Call(fn, []);
+  }
+
   var js_ast = Terr.CompileToJS(seq, "statement");
 
   return codegen.generate(JS.Program(js_ast));
@@ -6740,8 +6746,11 @@ exports.printString = print_str;
 },{"./core":3,"./id":4,"util":27}],22:[function(require,module,exports){
 var Environment = require('./Environment').Environment;
 
+var target = "browser";
+var mode = "library";
+
 function compileTerrible(text) {
-  var env = new Environment("node");
+  var env = new Environment(target);
   var messages = [];
   env.scope.expose('print', function (v) {
     messages.push("> " + v);
@@ -6754,14 +6763,14 @@ function compileTerrible(text) {
     messages.push(exc.stack ? ("! " + exc.stack) : "");
   }
 
-  return { js: env.asJS("library"), log: messages };
+  return { js: env.asJS(mode), log: messages };
 }
 
 var last_compile = null;
 
-function doCompile() {
+function doCompile(forced) {
   var this_compile = document.getElementById('terrible-input').value;
-  if (this_compile != last_compile) {
+  if (forced === true || this_compile != last_compile) {
     var compile_result = compileTerrible(this_compile);
     document.getElementById('terrible-output').value = compile_result.js;
     document.getElementById('terrible-log').value = compile_result.log.join("\n");
@@ -6770,6 +6779,22 @@ function doCompile() {
 }
 
 document.getElementById('terrible-input').addEventListener('keyup', doCompile);
+
+document.getElementById('environment-target').addEventListener('change',
+  function () {
+    var el = document.getElementById('environment-target');
+    target = el.value;
+    doCompile(true);
+  }
+);
+
+document.getElementById('environment-mode').addEventListener('change',
+  function () {
+    var el = document.getElementById('environment-mode');
+    mode = el.value;
+    doCompile(true);
+  }
+);
 
 doCompile();
 
@@ -6783,7 +6808,10 @@ var compilers = {
     fields: ['bodies', 'arities', 'variadic'],
     compile: function (node, mode) {
       var bodies = node.arities.map(function (k) {
-        return Terr.CompileToJS(node.bodies[k], "expression")
+        if (node.$noReturn) {
+          node.bodies[k].$noReturn = true;
+        }
+        return Terr.CompileToJS(node.bodies[k], "expression");
       });
 
       if (node.id) {
@@ -6807,9 +6835,9 @@ var compilers = {
             return [JS.ExpressionStatement(fn)];
           }
         } else if (mode == "return") {
-          return [JS.Return(bodies[0])];
+          return [JS.Return(fn)];
         } else if (mode == "expression") {
-          return bodies[0];
+          return fn;
         }
       } else {
 
@@ -6900,7 +6928,7 @@ var compilers = {
     compile: function (node, mode) {
       return JS.FunctionExpression(
         node.args.map(function (n) { return Terr.CompileToJS(n, "expression"); }),
-        Terr.CompileToJS(node.body, "return")
+        Terr.CompileToJS(node.body, node.$noReturn ? "statement" : "return")
       )
     }
   },

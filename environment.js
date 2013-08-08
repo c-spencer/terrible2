@@ -79,6 +79,12 @@ Environment.prototype.asJS = function (mode) {
     }
   }
 
+  if (this.target === "browser") {
+    var fn = Terr.Fn([Terr.SubFn([], seq, 0)], [0], null);
+    fn.$noReturn = true;
+    seq = Terr.Call(fn, []);
+  }
+
   var js_ast = Terr.CompileToJS(seq, "statement");
 
   return codegen.generate(JS.Program(js_ast));

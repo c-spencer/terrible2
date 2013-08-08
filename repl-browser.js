@@ -636,6 +636,17 @@ Scope.prototype.resolve = function (name) {
   }
 }
 
+Scope.prototype.nameClash = function (name) {
+  var keys = Object.keys(this.js_frame);
+  for (var i = 0; i < keys.length; ++i) {
+    var key = keys[i], entry = this.js_frame[key];
+    if ((entry.js_name && entry.js_name === name) ||
+        (!entry.js_name && key === name)) {
+      return true;
+    }
+  }
+}
+
 Scope.prototype.jsScoped = function (name) {
   return this.js_frame[name] != null
 }
@@ -5619,10 +5630,11 @@ builtins = {
       // not the js stack, so although this clobbers the old js scope information, the
       // js stack is only needed for the presence check, not the metadata.
 
-      if (env.scope.jsScoped(munged_name)) {
-        if (env.scope.logicalScoped(munged_name)) {
-          throw "Cannot redeclare var " + id.name
-        }
+      if (env.scope.logicalScoped(munged_name)) {
+        throw "Cannot redeclare var " + id.name
+      }
+
+      if (env.scope.nameClash(munged_name)) {
         var js_name = env.genID(munged_name);
       } else {
         var js_name = munged_name;
@@ -5631,6 +5643,7 @@ builtins = {
       env.scope.addSymbol(munged_name, {
         type: 'any',
         accessor: Terr.Identifier(js_name),
+        js_name: js_name,
         export: false
       });
 
@@ -5680,7 +5693,11 @@ builtins = {
       var ns_name = opts.env.env.current_namespace.name;
       var munged_name = mungeSymbol(parsed_id.root);
 
-      if (env.scope.jsScoped(munged_name)) {
+      if (env.scope.logicalScoped(munged_name)) {
+        throw "Cannot redef " + id.name
+      }
+
+      if (env.scope.nameClash(munged_name)) {
         var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + env.genID(munged_name);
       } else {
         var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + munged_name;
@@ -5689,6 +5706,7 @@ builtins = {
       env.scope.addSymbol(munged_name, {
         type: 'any',
         accessor: Terr.Identifier(js_name),
+        js_name: js_name,
         export: true
       });
 

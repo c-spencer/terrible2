@@ -30,6 +30,17 @@ Scope.prototype.resolve = function (name) {
   }
 }
 
+Scope.prototype.nameClash = function (name) {
+  var keys = Object.keys(this.js_frame);
+  for (var i = 0; i < keys.length; ++i) {
+    var key = keys[i], entry = this.js_frame[key];
+    if ((entry.js_name && entry.js_name === name) ||
+        (!entry.js_name && key === name)) {
+      return true;
+    }
+  }
+}
+
 Scope.prototype.jsScoped = function (name) {
   return this.js_frame[name] != null
 }

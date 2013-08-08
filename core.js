@@ -36,13 +36,3 @@ function Keyword (name) {
   return kw;
 }
 exports.keyword = Keyword;
-
-// inserted support function
-function forIn (obj, fn) {
-  var k, arr = []
-  for (k in obj) {
-    arr.push(fn(k))
-  }
-  return arr;
-}
-exports.for_in = forIn;

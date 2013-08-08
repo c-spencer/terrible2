@@ -2,7 +2,6 @@ var walker = require('./walker')
 var core = require('./core')
 var JS = require('./js')
 var codegen = require('escodegen')
-var ID = require('./id')
 var Terr = require('./terr-ast')
 
 function mungeSymbol (str) {
@@ -179,7 +178,7 @@ builtins = {
         if (env.scope.logicalScoped(munged_name)) {
           throw "Cannot redeclare var " + id.name
         }
-        var js_name = ID.gen(munged_name);
+        var js_name = env.genID(munged_name);
       } else {
         var js_name = munged_name;
       }
@@ -237,7 +236,7 @@ builtins = {
       var munged_name = mungeSymbol(parsed_id.root);
 
       if (env.scope.jsScoped(munged_name)) {
-        var js_name = ID.gen(munged_name);
+        var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + env.genID(munged_name);
       } else {
         var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + munged_name;
       }
@@ -743,6 +742,10 @@ function WalkingEnv(env, scope, quoted) {
   this.env = env;
   this.scope = scope;
   this.quoted = quoted;
+}
+
+WalkingEnv.prototype.genID = function (root) {
+  return this.env.genID(root);
 }
 
 WalkingEnv.prototype.newScope = function (logical, js) {

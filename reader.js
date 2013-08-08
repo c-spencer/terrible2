@@ -2,7 +2,6 @@
 // https://github.com/clojure/clojure/blob/master/src/jvm/clojure/lang/LispReader.java
 
 var core = require('./core')
-var ID = require('./id')
 
 // Buffer
 
@@ -173,9 +172,9 @@ function findArg (reader, n) {
   }
 }
 
-gen_arg = function (n) {
+gen_arg = function (reader, n) {
   var root = (n === -1) ? "rest" : "arg$" + n;
-  return core.symbol(ID.gen(root));
+  return core.symbol(reader.genID(root));
 }
 
 function registerArg (reader, n) {
@@ -185,7 +184,7 @@ function registerArg (reader, n) {
 
   var arg = findArg(reader, n);
   if (arg == null) {
-    var symbol = gen_arg(n);
+    var symbol = gen_arg(reader, n);
     reader.ARG_ENV.push({n: n, symbol: symbol});
     return symbol;
   } else {
@@ -284,7 +283,7 @@ fnReader = function (buffer, openparen) {
 
     for (var i = 0, len = args.length; i < len; ++i) {
       if (!args[i]) {
-        args[i] = gen_arg(i + 1);
+        args[i] = gen_arg(this, i + 1);
       }
     }
 
@@ -305,7 +304,9 @@ fnReader = function (buffer, openparen) {
   }
 }
 
-function Reader () {}
+function Reader (id_generator) {
+  this.genID = id_generator;
+}
 
 Reader.prototype.macros = {
   "[": vectorReader,
@@ -521,5 +522,5 @@ try_parse = function (str) {
 // try_parse("(a.b[(+ 1 2)][:a] [1 2 3] {:a 5 :b 6})");
 // try_parse('(a """my fun " string""")')
 
-exports.Reader = new Reader()
+exports.Reader = Reader
 exports.printString = print_str;

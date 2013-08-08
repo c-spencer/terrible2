@@ -7,7 +7,14 @@ var reader = require('./reader');
 var parser = require('./parser');
 
 function Environment (target) {
-  this.readSession = reader.Reader.newReadSession();
+
+  var id_counter = 0;
+
+  this.genID = function (root) {
+    return root + "_$" + (++id_counter);
+  }
+
+  this.readSession = (new reader.Reader(this.genID)).newReadSession();
 
   this.target = target || "node";
 
@@ -94,7 +101,7 @@ Environment.prototype.asJS = function (mode) {
 exports.Environment = Environment;
 
 })()
-},{"./js":5,"./namespace":6,"./parser":20,"./reader":21,"./terr-ast":23,"escodegen":7}],2:[function(require,module,exports){
+},{"./js":4,"./namespace":5,"./parser":19,"./reader":20,"./terr-ast":22,"escodegen":6}],2:[function(require,module,exports){
 exports.Identifier = function(name) {
   return {
     type: 'Identifier',
@@ -366,15 +373,6 @@ function Keyword (name) {
 exports.keyword = Keyword;
 
 },{}],4:[function(require,module,exports){
-var id_counter = 0
-
-var nextID = function () { return ++id_counter; }
-
-exports.gen = function (root) {
-  return root + "_$" + nextID();
-}
-
-},{}],5:[function(require,module,exports){
 exports.Identifier = function(name) {
   return {
     type: 'Identifier',
@@ -605,7 +603,7 @@ exports.This = function() {
   };
 };
 
-},{}],6:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 var JS = require('./js');
 var Terr = require('./terr-ast');
 
@@ -754,7 +752,7 @@ Namespace.prototype.exportsMap = function () {
 exports.Namespace = Namespace;
 exports.Scope = Scope;
 
-},{"./core":3,"./js":5,"./terr-ast":23}],7:[function(require,module,exports){
+},{"./core":3,"./js":4,"./terr-ast":22}],6:[function(require,module,exports){
 (function(global){/*
   Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2012-2013 Michael Ficarra <escodegen.copyright@michael.ficarra.me>
@@ -3068,7 +3066,7 @@ exports.Scope = Scope;
 /* vim: set sw=4 ts=4 et tw=80 : */
 
 })(self)
-},{"./package.json":19,"estraverse":8,"source-map":9}],8:[function(require,module,exports){
+},{"./package.json":18,"estraverse":7,"source-map":8}],7:[function(require,module,exports){
 (function(){/*
   Copyright (C) 2012 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2012 Ariya Hidayat <ariya.hidayat@gmail.com>
@@ -3386,7 +3384,7 @@ exports.Scope = Scope;
 /* vim: set sw=4 ts=4 et tw=80 : */
 
 })()
-},{}],9:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 /*
  * Copyright 2009-2011 Mozilla Foundation and contributors
  * Licensed under the New BSD license. See LICENSE.txt or:
@@ -3396,7 +3394,7 @@ exports.SourceMapGenerator = require('./source-map/source-map-generator').Source
 exports.SourceMapConsumer = require('./source-map/source-map-consumer').SourceMapConsumer;
 exports.SourceNode = require('./source-map/source-node').SourceNode;
 
-},{"./source-map/source-map-consumer":14,"./source-map/source-map-generator":15,"./source-map/source-node":16}],10:[function(require,module,exports){
+},{"./source-map/source-map-consumer":13,"./source-map/source-map-generator":14,"./source-map/source-node":15}],9:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -3494,7 +3492,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./util":17,"amdefine":18}],11:[function(require,module,exports){
+},{"./util":16,"amdefine":17}],10:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -3640,7 +3638,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./base64":12,"amdefine":18}],12:[function(require,module,exports){
+},{"./base64":11,"amdefine":17}],11:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -3684,7 +3682,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":18}],13:[function(require,module,exports){
+},{"amdefine":17}],12:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -3767,7 +3765,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":18}],14:[function(require,module,exports){
+},{"amdefine":17}],13:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -4210,7 +4208,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./array-set":10,"./base64-vlq":11,"./binary-search":13,"./util":17,"amdefine":18}],15:[function(require,module,exports){
+},{"./array-set":9,"./base64-vlq":10,"./binary-search":12,"./util":16,"amdefine":17}],14:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -4593,7 +4591,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./array-set":10,"./base64-vlq":11,"./util":17,"amdefine":18}],16:[function(require,module,exports){
+},{"./array-set":9,"./base64-vlq":10,"./util":16,"amdefine":17}],15:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -4948,7 +4946,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./source-map-generator":15,"./util":17,"amdefine":18}],17:[function(require,module,exports){
+},{"./source-map-generator":14,"./util":16,"amdefine":17}],16:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -5067,7 +5065,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":18}],18:[function(require,module,exports){
+},{"amdefine":17}],17:[function(require,module,exports){
 (function(process,__filename){/** vim: et:ts=4:sw=4:sts=4
  * @license amdefine 0.0.5 Copyright (c) 2011, The Dojo Foundation All Rights Reserved.
  * Available via the MIT or new BSD license.
@@ -5369,7 +5367,7 @@ function amdefine(module, require) {
 module.exports = amdefine;
 
 })(require("__browserify_process"),"/node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js")
-},{"__browserify_process":28,"path":26}],19:[function(require,module,exports){
+},{"__browserify_process":27,"path":25}],18:[function(require,module,exports){
 module.exports=module.exports={
   "name": "escodegen",
   "description": "ECMAScript code generator",
@@ -5440,12 +5438,11 @@ module.exports=module.exports={
   "_resolved": "https://registry.npmjs.org/escodegen/-/escodegen-0.0.24.tgz"
 }
 
-},{}],20:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 (function(){var walker = require('./walker')
 var core = require('./core')
 var JS = require('./js')
 var codegen = require('escodegen')
-var ID = require('./id')
 var Terr = require('./terr-ast')
 
 function mungeSymbol (str) {
@@ -5622,7 +5619,7 @@ builtins = {
         if (env.scope.logicalScoped(munged_name)) {
           throw "Cannot redeclare var " + id.name
         }
-        var js_name = ID.gen(munged_name);
+        var js_name = env.genID(munged_name);
       } else {
         var js_name = munged_name;
       }
@@ -5680,7 +5677,7 @@ builtins = {
       var munged_name = mungeSymbol(parsed_id.root);
 
       if (env.scope.jsScoped(munged_name)) {
-        var js_name = ID.gen(munged_name);
+        var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + env.genID(munged_name);
       } else {
         var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + munged_name;
       }
@@ -6188,6 +6185,10 @@ function WalkingEnv(env, scope, quoted) {
   this.quoted = quoted;
 }
 
+WalkingEnv.prototype.genID = function (root) {
+  return this.env.genID(root);
+}
+
 WalkingEnv.prototype.newScope = function (logical, js) {
   return new WalkingEnv(this.env, this.scope.newScope(logical, js), this.quoted);
 }
@@ -6215,12 +6216,11 @@ function process_form (form, env, quoted) {
 exports.process = process_form;
 
 })()
-},{"./core":3,"./id":4,"./js":5,"./terr-ast":23,"./walker":24,"escodegen":7}],21:[function(require,module,exports){
+},{"./core":3,"./js":4,"./terr-ast":22,"./walker":23,"escodegen":6}],20:[function(require,module,exports){
 (function(){// A partial port and modification of the Clojure reader
 // https://github.com/clojure/clojure/blob/master/src/jvm/clojure/lang/LispReader.java
 
 var core = require('./core')
-var ID = require('./id')
 
 // Buffer
 
@@ -6391,9 +6391,9 @@ function findArg (reader, n) {
   }
 }
 
-gen_arg = function (n) {
+gen_arg = function (reader, n) {
   var root = (n === -1) ? "rest" : "arg$" + n;
-  return core.symbol(ID.gen(root));
+  return core.symbol(reader.genID(root));
 }
 
 function registerArg (reader, n) {
@@ -6403,7 +6403,7 @@ function registerArg (reader, n) {
 
   var arg = findArg(reader, n);
   if (arg == null) {
-    var symbol = gen_arg(n);
+    var symbol = gen_arg(reader, n);
     reader.ARG_ENV.push({n: n, symbol: symbol});
     return symbol;
   } else {
@@ -6502,7 +6502,7 @@ fnReader = function (buffer, openparen) {
 
     for (var i = 0, len = args.length; i < len; ++i) {
       if (!args[i]) {
-        args[i] = gen_arg(i + 1);
+        args[i] = gen_arg(this, i + 1);
       }
     }
 
@@ -6523,7 +6523,9 @@ fnReader = function (buffer, openparen) {
   }
 }
 
-function Reader () {}
+function Reader (id_generator) {
+  this.genID = id_generator;
+}
 
 Reader.prototype.macros = {
   "[": vectorReader,
@@ -6739,11 +6741,11 @@ try_parse = function (str) {
 // try_parse("(a.b[(+ 1 2)][:a] [1 2 3] {:a 5 :b 6})");
 // try_parse('(a """my fun " string""")')
 
-exports.Reader = new Reader()
+exports.Reader = Reader
 exports.printString = print_str;
 
 })()
-},{"./core":3,"./id":4,"util":27}],22:[function(require,module,exports){
+},{"./core":3,"util":26}],21:[function(require,module,exports){
 var Environment = require('./Environment').Environment;
 
 var target = "browser";
@@ -6798,7 +6800,7 @@ document.getElementById('environment-mode').addEventListener('change',
 
 doCompile();
 
-},{"./Environment":1}],23:[function(require,module,exports){
+},{"./Environment":1}],22:[function(require,module,exports){
 var JS = require('./JS');
 
 var Terr = exports;
@@ -7176,7 +7178,7 @@ Terr.CompileToJS = function (ast, mode) {
   }
 }
 
-},{"./JS":2}],24:[function(require,module,exports){
+},{"./JS":2}],23:[function(require,module,exports){
 function walkProgramTree (handlers, node) {
   function walkTree () {
     var args = Array.prototype.slice.call(arguments);
@@ -7214,7 +7216,7 @@ function walkProgramTree (handlers, node) {
 
 module.exports = walkProgramTree;
 
-},{}],25:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 (function(process){if (!process.EventEmitter) process.EventEmitter = function () {};
 
 var EventEmitter = exports.EventEmitter = process.EventEmitter;
@@ -7400,7 +7402,7 @@ EventEmitter.prototype.listeners = function(type) {
 };
 
 })(require("__browserify_process"))
-},{"__browserify_process":28}],26:[function(require,module,exports){
+},{"__browserify_process":27}],25:[function(require,module,exports){
 (function(process){function filter (xs, fn) {
     var res = [];
     for (var i = 0; i < xs.length; i++) {
@@ -7578,7 +7580,7 @@ exports.relative = function(from, to) {
 };
 
 })(require("__browserify_process"))
-},{"__browserify_process":28}],27:[function(require,module,exports){
+},{"__browserify_process":27}],26:[function(require,module,exports){
 var events = require('events');
 
 exports.isArray = isArray;
@@ -7931,7 +7933,7 @@ exports.format = function(f) {
   return str;
 };
 
-},{"events":25}],28:[function(require,module,exports){
+},{"events":24}],27:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -7985,5 +7987,5 @@ process.chdir = function (dir) {
     throw new Error('process.chdir is not supported');
 };
 
-},{}]},{},[22])
+},{}]},{},[21])
 ;

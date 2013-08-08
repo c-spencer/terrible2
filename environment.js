@@ -6,7 +6,14 @@ var reader = require('./reader');
 var parser = require('./parser');
 
 function Environment (target) {
-  this.readSession = reader.Reader.newReadSession();
+
+  var id_counter = 0;
+
+  this.genID = function (root) {
+    return root + "_$" + (++id_counter);
+  }
+
+  this.readSession = (new reader.Reader(this.genID)).newReadSession();
 
   this.target = target || "node";
 

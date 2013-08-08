@@ -117,6 +117,15 @@ function Namespace (name, scope) {
   this.ast_nodes = [];
 }
 
+Namespace.prototype.exportsMap = function () {
+  return this.scope.exports().map(function (exported) {
+    return {
+      key: exported.name,
+      value: exported.data.accessor
+    };
+  });
+}
+
 // var env = new Namespace();
 // env.evalFile('jsbench.terr');
 // env.evalFile('core.terr');

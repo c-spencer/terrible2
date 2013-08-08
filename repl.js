@@ -1,7 +1,7 @@
 var Environment = require('./Environment').Environment;
 
 function compileTerrible(text) {
-  var env = new Environment();
+  var env = new Environment("node");
   var messages = [];
   env.scope.expose('print', function (v) {
     messages.push("> " + v);
@@ -14,7 +14,7 @@ function compileTerrible(text) {
     messages.push(exc.stack ? ("! " + exc.stack) : "");
   }
 
-  return { js: env.asJS(), log: messages };
+  return { js: env.asJS("library"), log: messages };
 }
 
 var last_compile = null;

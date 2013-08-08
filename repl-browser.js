@@ -6,11 +6,17 @@ var JS = require('./js');
 var reader = require('./reader');
 var parser = require('./parser');
 
-function Environment () {
+function Environment (target) {
   this.readSession = reader.Reader.newReadSession();
+
+  this.target = target || "node";
 
   this.scope = new Namespace.Scope();
   this.scope.expose('Array', Array);
+  this.scope.expose('Function', Function);
+  this.scope.expose('Object', Object);
+  this.scope.expose('Number', Number);
+
   this.scope.expose('JSON', JSON);
   this.scope.expose('console', console);
 
@@ -51,16 +57,30 @@ Environment.prototype.evalText = function (text) {
   }
 };
 
-Environment.prototype.asJS = function () {
+Environment.prototype.asJS = function (mode) {
   var seq = Terr.Seq([]);
 
   for (var i = 0; i < this.namespaces.length; ++i) {
     seq.values.push(Terr.Seq(this.namespaces[i].ast_nodes));
   }
 
-  var js_ast = Terr.CompileToJS(seq, "statement");
+  if (mode === "library") {
+    var export_map = this.current_namespace.exportsMap();
 
-  // console.log("asJS", require('util').inspect(js_ast, false, 20));
+    if (this.target === "browser") {
+      seq.values.push(Terr.Return(Terr.Obj(export_map)));
+    } else {
+      for (var i = 0; i < export_map.length; ++i) {
+        var entry = export_map[i];
+        seq.values.push(Terr.Assign(
+          Terr.Member(Terr.Identifier("exports"), Terr.Literal(entry.key)),
+          entry.value
+        ));
+      }
+    }
+  }
+
+  var js_ast = Terr.CompileToJS(seq, "statement");
 
   return codegen.generate(JS.Program(js_ast));
 }
@@ -338,16 +358,6 @@ function Keyword (name) {
   return kw;
 }
 exports.keyword = Keyword;
-
-// inserted support function
-function forIn (obj, fn) {
-  var k, arr = []
-  for (k in obj) {
-    arr.push(fn(k))
-  }
-  return arr;
-}
-exports.for_in = forIn;
 
 },{}],4:[function(require,module,exports){
 var id_counter = 0
@@ -707,6 +717,15 @@ function Namespace (name, scope) {
   this.scope.refer(['terrible', 'core'], require('./core'));
 
   this.ast_nodes = [];
+}
+
+Namespace.prototype.exportsMap = function () {
+  return this.scope.exports().map(function (exported) {
+    return {
+      key: exported.name,
+      value: exported.data.accessor
+    };
+  });
 }
 
 // var env = new Namespace();
@@ -5549,6 +5568,7 @@ builtins = {
   '>': makeBinary('>'),
   '>=': makeBinary('>='),
   '/': makeBinary('/'),
+  'instance?': makeBinary('instanceof'),
 
   'not': makeUnary('!'),
   'xor': makeUnary('~'),
@@ -6721,7 +6741,7 @@ exports.printString = print_str;
 var Environment = require('./Environment').Environment;
 
 function compileTerrible(text) {
-  var env = new Environment();
+  var env = new Environment("node");
   var messages = [];
   env.scope.expose('print', function (v) {
     messages.push("> " + v);
@@ -6734,7 +6754,7 @@ function compileTerrible(text) {
     messages.push(exc.stack ? ("! " + exc.stack) : "");
   }
 
-  return { js: env.asJS(), log: messages };
+  return { js: env.asJS("library"), log: messages };
 }
 
 var last_compile = null;

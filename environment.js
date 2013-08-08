@@ -44,7 +44,7 @@ Environment.prototype.getNamespace = function (name) {
   if (ns) {
     return ns;
   } else {
-    var ns = new Namespace.Namespace(name, this.scope.newScope(true, true));
+    var ns = new Namespace.Namespace(name, this.scope.newScope(true, false));
     this.namespaces.push(ns);
     return ns;
   }

@@ -3,10 +3,10 @@ var Terr = require('./terr-ast');
 
 // Scopes
 
-function Scope (parent) {
+function Scope (parent, js_frame) {
   this.parent = parent;
   this.logical_frame = {};
-  this.js_frame = {};
+  this.js_frame = js_frame || {};
 }
 
 Scope.prototype.addSymbol = function (name, metadata) {
@@ -15,7 +15,11 @@ Scope.prototype.addSymbol = function (name, metadata) {
 }
 
 Scope.prototype.newScope = function (logical, js) {
-  return new Scope(this);
+  if (js == true) {
+    return new Scope(this);
+  } else {
+    return new Scope(this, this.js_frame);
+  }
 }
 
 Scope.prototype.resolve = function (name) {

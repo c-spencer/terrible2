@@ -131,6 +131,7 @@ builtins = {
   '>': makeBinary('>'),
   '>=': makeBinary('>='),
   '/': makeBinary('/'),
+  'instance?': makeBinary('instanceof'),
 
   'not': makeUnary('!'),
   'xor': makeUnary('~'),

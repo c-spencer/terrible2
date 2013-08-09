@@ -410,7 +410,13 @@ builtins = {
     var symbs = Array.prototype.slice.call(arguments, 1);
 
     symbs.forEach(function (symb) {
-      var munged = mungeSymbol(symb.name());
+      var parsed_symb = parseSymbol(symb.name);
+
+      if (parsed_symb.parts.length > 0 || parsed_symb.namespace) {
+        throw "Cannot declare " + symb.name
+      }
+
+      var munged = mungeSymbol(parsed_symb.root);
       env.scope.addSymbol(munged, {
         type: 'any',
         export: false,
@@ -485,8 +491,16 @@ builtins = {
     var args = Array.prototype.slice.call(arguments, 3);
     var walker = opts.walker(opts.env);
 
-    return Terr.Call(Terr.Member(walker(target), Terr.Literal(member.name())),
-                     args.map(walker));
+    var parsed_member = parseSymbol(member.name);
+
+    if (parsed_member.parts.length > 0 || parsed_member.namespace) {
+      throw "Cannot . access " + member.name
+    }
+
+    return Terr.Call(
+      Terr.Member(walker(target), Terr.Literal(parsed_member.root)),
+      args.map(walker)
+    );
   },
 
   "try": function (opts) {
@@ -496,21 +510,28 @@ builtins = {
     var body = Array.prototype.slice.call(arguments, 1);
     var catch_clause = body.pop();
 
-    if (catch_clause.type !== "List" || catch_clause.values.length < 2 || catch_clause.values[0].type !== "Symbol" || catch_clause.values[0].name() !== "catch") {
+    if (catch_clause.type !== "List" || catch_clause.values.length < 2 || catch_clause.values[0].type !== "Symbol" || catch_clause.values[0].name !== "catch") {
       throw "Invalid catch clause"
     }
 
     var catch_args = catch_clause.values[1];
     var catch_body = catch_clause.values.slice(2);
 
-    if (!Array.isArray(catch_args) || catch_args.length !== 1) {
+    if (!Array.isArray(catch_args) || catch_args.length !== 1 || catch_args[0].type !== "Symbol") {
       throw "Invalid catch args."
     }
 
     var body_walker = walker(env);
     var body = Terr.Seq(body.map(body_walker));
 
-    var munged_name = mungeSymbol(catch_args[0].name());
+    var catch_arg = catch_args[0];
+    var parsed_catch_arg = parseSymbol(catch_arg.name);
+
+    if (parsed_catch_arg.parts.length > 0 || parsed_catch_arg.namespace) {
+      throw "Invalid catch arg."
+    }
+
+    var munged_name = mungeSymbol(parsed_catch_arg.root);
 
     var catch_env = env.newScope(true, false);
     catch_env.scope.addSymbol(munged_name, { type: 'any', accessor: Terr.Identifier(munged_name)});

@@ -4,6 +4,16 @@ var JS = require('./js')
 var codegen = require('escodegen')
 var Terr = require('./terr-ast')
 
+function isSymbol(s) {
+  return s instanceof core.symbol;
+}
+function isKeyword(s) {
+  return s instanceof core.keyword;
+}
+function isList(s) {
+  return s instanceof core.list;
+}
+
 function mungeSymbol (str) {
   return str.replace(/-/g, '_')
     .replace(/\:/g, "_COLON_")
@@ -172,7 +182,7 @@ builtins = {
     var walker = opts.walker,
         env = opts.env;
 
-    if (id.type !== "Symbol") {
+    if (!isSymbol(id)) {
       throw "First argument to var must be symbol."
     }
 
@@ -239,7 +249,7 @@ builtins = {
     var walker = opts.walker,
         env = opts.env;
 
-    if (id.type !== "Symbol") {
+    if (!isSymbol(id)) {
       throw "First argument to def must be symbol."
     }
 
@@ -306,7 +316,7 @@ builtins = {
       for (var i = 0, len = args.length; i < len; ++i) {
         var arg = args[i];
 
-        if (arg.type !== "Symbol") {
+        if (!isSymbol(arg)) {
           throw "Invalid formal arg " + arg;
         }
 
@@ -316,7 +326,7 @@ builtins = {
           if (parsed_arg.root == "&") {
             rest_arg = args[i + 1];
 
-            if (!rest_arg || rest_arg.type !== "Symbol") {
+            if (!rest_arg || !isSymbol(rest_arg)) {
               throw "Invalid rest arg " + rest_arg;
             }
 
@@ -365,7 +375,7 @@ builtins = {
 
     // END COMPILE FN
 
-    if (args.type == "List") { // multiple arity function
+    if (isList(args)) { // multiple arity function
       var arity_forms = Array.prototype.slice.call(arguments, 1);
     } else {
       var arity_forms = [core.list.apply(null, Array.prototype.slice.call(arguments, 1))]
@@ -510,14 +520,14 @@ builtins = {
     var body = Array.prototype.slice.call(arguments, 1);
     var catch_clause = body.pop();
 
-    if (catch_clause.type !== "List" || catch_clause.values.length < 2 || catch_clause.values[0].type !== "Symbol" || catch_clause.values[0].name !== "catch") {
+    if (!isList(catch_clause) || catch_clause.values.length < 2 || !isSymbol(catch_clause.values[0]) || catch_clause.values[0].name !== "catch") {
       throw "Invalid catch clause"
     }
 
     var catch_args = catch_clause.values[1];
     var catch_body = catch_clause.values.slice(2);
 
-    if (!Array.isArray(catch_args) || catch_args.length !== 1 || catch_args[0].type !== "Symbol") {
+    if (!Array.isArray(catch_args) || catch_args.length !== 1 || !isSymbol(catch_args[0])) {
       throw "Invalid catch args."
     }
 
@@ -659,7 +669,7 @@ walk_handlers = {
     var head = node.values[0];
     var tail = node.values.slice(1);
 
-    if (head && head.type == "Symbol") {
+    if (head && isSymbol(head)) {
 
       var parsed_head = parseSymbol(head.name);
 
@@ -772,26 +782,35 @@ walk_handlers = {
       Terr.Identifier("refer$terrible$core", ["keyword"]),
       [Terr.Literal(node.toString())]
     );
-  },
+  }
+}
 
-  "ANY": function (node, walker, env) {
-    if (Array.isArray(node)) {
-      return Terr.Arr(node.map(walker(env)));
-    } else if (node === null) {
-      return Terr.Literal(null);
-    } else if (typeof node == 'object') {
+walk_handler = function (node, walker, env) {
 
-      var props = [];
-      walker = walker(env);
+  console.log(node);
 
-      for (var k in node) {
-        props.push({key: k, value: walker(node[k])});
-      }
+  if (node instanceof core.list) {
+    return walk_handlers.List(node, walker, env);
+  } if (node instanceof core.keyword) {
+    return walk_handlers.Keyword(node, walker, env);
+  } else if (node instanceof core.symbol) {
+    return walk_handlers.Symbol(node, walker, env);
+  } else if (Array.isArray(node)) {
+    return Terr.Arr(node.map(walker(env)));
+  } else if (node === null) {
+    return Terr.Literal(null);
+  } else if (typeof node == 'object') {
 
-      return Terr.Obj(props);
-    } else {
-      return Terr.Literal(node);
+    var props = [];
+    walker = walker(env);
+
+    for (var k in node) {
+      props.push({key: k, value: walker(node[k])});
     }
+
+    return Terr.Obj(props);
+  } else {
+    return Terr.Literal(node);
   }
 }
 
@@ -820,7 +839,7 @@ function process_form (form, env, quoted) {
 
   var walking_env = new WalkingEnv(env, env.current_namespace.scope, quoted);
 
-  var ast = walker(walk_handlers, form, walking_env);
+  var ast = walker(walk_handler, form, walking_env);
   // console.log("ast", require('util').inspect(ast, false, 20));
   var value = compile_eval(ast, env);
 

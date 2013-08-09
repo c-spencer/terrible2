@@ -7,14 +7,13 @@
 // Because maps in source are read as objects, we have to be careful for these
 // types to not be plain objects, so that we can differentiate them.
 
-function ListImpl(values) {
-  this.values = values;
-}
-ListImpl.prototype.type = "List";
-ListImpl.prototype.$isList = true;
 function List() {
-  var arr = Array.prototype.slice.call(arguments);
-  return new ListImpl(arr);
+  var values = Array.prototype.slice.call(arguments, 0);
+  if (this instanceof List) {
+    this.values = values;
+  } else {
+    return new (Function.prototype.bind.apply(List, [null].concat(values)));
+  }
 }
 exports.list = List;
 
@@ -25,14 +24,15 @@ function Symbol(name) {
     return new Symbol(name);
   }
 }
-Symbol.prototype.type = "Symbol";
 Symbol.prototype.toString = function () { return this.name; };
 exports.symbol = Symbol;
 
 function Keyword (name) {
-  var kw = function (m) { return m[name]; }
-  kw.toString = function () { return name; };
-  kw.type = "Keyword";
-  return kw;
+  if (this instanceof Keyword) {
+    this.name = name;
+  } else {
+    return new Keyword(name);
+  }
 }
+Keyword.prototype.toString = function () { return this.name; }
 exports.keyword = Keyword;

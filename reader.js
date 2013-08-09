@@ -239,7 +239,7 @@ argReader = function (buffer, percent) {
 
   var n = this.read(buffer);
 
-  if (n.type == 'Symbol' && n.name == '&') {
+  if (n instanceof core.symbol && n.name == '&') {
     return this.registerArg(-1);
   }
 
@@ -297,7 +297,7 @@ fnReader = function (buffer, openparen) {
 
   this.ARG_ENV = originalENV;
 
-  if (form.values[0] && form.values[0].type !== "Symbol") {
+  if (form.values[0] && !(form.values[0] instanceof core.symbol)) {
     return core.list.apply(null, [core.symbol('fn'), args].concat(form.values));
   } else {
     return core.list(core.symbol('fn'), args, form);

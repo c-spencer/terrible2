@@ -1,15 +1,13 @@
-function walkProgramTree (handlers, node) {
+function walkProgramTree (handler, node) {
   function walkTree () {
     var args = Array.prototype.slice.call(arguments);
 
     return function selfApp (node) {
-      var handler, new_node, k;
+      var new_node, k;
 
-      if (handler = (node && node.constructor.name != "Object" && handlers[node.type]) || handlers.ANY) {
-        result = handler.apply(null, [node, walkTree].concat(args))
-        if (result !== false) {
-          return result;
-        }
+      result = handler.apply(null, [node, walkTree].concat(args))
+      if (result !== false) {
+        return result;
       }
 
       if (Array.isArray(node)) {

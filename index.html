@@ -24,7 +24,19 @@
       .input {
         position: absolute;
         top: 0;
+        width: 50%;
+      }
+      .input.left {
         bottom: 200px;
+      }
+      .input.right {
+        bottom: 240px;
+      }
+      .compiler-options {
+        bottom: 200px;
+        height: 40px;
+        background: #444;
+        right: 0;
         width: 50%;
       }
       body {
@@ -43,7 +55,7 @@
     </style>
   </head>
   <body>
-    <textarea class="panel input" id="terrible-input">
+    <textarea class="panel input left" id="terrible-input">
 ; Variable declaration
 (var a 1)
 
@@ -91,7 +103,17 @@
 ; But only when it needs to be
 (try (+ 1 2) (catch [exc] (console.log "oh dear")))
 </textarea>
-    <textarea class="panel input" id="terrible-output"></textarea>
+    <textarea class="panel input right" id="terrible-output"></textarea>
+    <div class="panel compiler-options">
+      <select id="environment-target">
+        <option value="browser" selected>browser</option>
+        <option value="node">node.js</option>
+      </select>
+      <select id="environment-mode">
+        <option value="library" selected>library</option>
+        <option value="standalone">standalone</option>
+      </select>
+    </div>
     <textarea class="panel output" id="terrible-log"></textarea>
     <script src="./repl-browser.js"></script>
   </body>

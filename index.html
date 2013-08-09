@@ -67,13 +67,10 @@
 (do 5 6 7 a)
 (var b (do 5 6 7 a))
 
-; JS-style accessors on variables.
+; JS-style static accessors on variables.
 (var arr [1 2 3])
-(print "arr[(+ 1 1)]:")
-(print arr[(+ 1 1)])
-
-; Variable redeclaration
-(var a 2)
+(print "arr.2:")
+(print arr.2)
 
 ; Functions
 (fn [a] (+ a 1))
@@ -87,7 +84,7 @@
   ([a] a)
   ([a b] (+ a b))
   ([a b & c]
-    (sum.apply this (.concat [(+ a b c[0])] (c.slice 1)))))
+    (sum.apply this (.concat [(+ a b c.0)] (c.slice 1)))))
 
 (print "sum calls:")
 (print (sum 1))

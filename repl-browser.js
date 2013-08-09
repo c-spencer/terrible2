@@ -736,6 +736,7 @@ function Namespace (name, scope) {
   this.scope.refer(['terrible', 'core'], require('./core'));
 
   this.ast_nodes = [];
+  this.dependent_namespaces = [];
 }
 
 Namespace.prototype.exportsMap = function () {
@@ -745,6 +746,12 @@ Namespace.prototype.exportsMap = function () {
       value: exported.data.accessor
     };
   });
+}
+
+Namespace.prototype.requiresNamespace = function (ns) {
+  if (!~this.dependent_namespaces.indexOf(ns)) {
+    this.dependent_namespaces.push(ns);
+  }
 }
 
 // var env = new Namespace();
@@ -5383,7 +5390,7 @@ module.exports = amdefine;
 
 })(require("__browserify_process"),"/node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js")
 },{"__browserify_process":27,"path":25}],18:[function(require,module,exports){
-module.exports={
+module.exports=module.exports={
   "name": "escodegen",
   "description": "ECMAScript code generator",
   "homepage": "http://github.com/Constellation/escodegen.html",
@@ -5553,6 +5560,7 @@ function parseSymbol (symb) {
         ns = symb.slice(0, pos - 1);
         part = "";
         parts = [];
+        root = null;
       } else {
         throw "Couldn't parse symbol `" + symb + "`"
       }
@@ -5573,6 +5581,21 @@ function parseSymbol (symb) {
     root: root,
     parts: parts
   }
+}
+
+function resolveSymbol (env, parsed_symbol) {
+  if (parsed_symbol.namespace) {
+    var ns = env.env.findNamespace(parsed_symbol.namespace);
+    if (!ns) {
+      throw "Couldn't find namespace `" + parsed_symbol.namespace + "`"
+    }
+    env.env.current_namespace.requiresNamespace(ns);
+    var scope = ns.scope;
+  } else {
+    var scope = env.scope;
+  }
+
+  return scope.resolve(mungeSymbol(parsed_symbol.root));
 }
 
 builtins = {
@@ -5998,6 +6021,20 @@ function compile_eval (node, env) {
 
   var to_rescope = Object.keys(unmap);
 
+  env.current_namespace.dependent_namespaces.forEach(function (ns) {
+    var scope = ns.scope;
+
+    var exported_scope = scope.jsScope(function (entry) {
+      return entry.export;
+    });
+
+    Object.keys(exported_scope).forEach(function (key) {
+      var entry = exported_scope[key];
+      var js_name = entry.accessor.name;
+      agg[js_name] = entry.value;
+    });
+  });
+
   var compile_nodes = Terr.CompileToJS(node, "return");
 
   var js = codegen.generate({
@@ -6097,7 +6134,7 @@ walk_handlers = {
         return walker(env)(macros[name].apply(null, tail));
       }
 
-      var resolved = env.scope.resolve(mungeSymbol(name));
+      var resolved = resolveSymbol(env, parsed_head);
 
       if (resolved === false) {
         throw "Couldn't resolve " + name;
@@ -6155,8 +6192,7 @@ walk_handlers = {
     }
 
     var parsed_node = parseSymbol(node.name);
-
-    var resolved = env.scope.resolve(mungeSymbol(parsed_node.root));
+    var resolved = resolveSymbol(env, parsed_node);
 
     if (!resolved) {
       console.trace();

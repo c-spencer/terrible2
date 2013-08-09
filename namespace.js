@@ -130,6 +130,7 @@ function Namespace (name, scope) {
   this.scope.refer(['terrible', 'core'], require('./core'));
 
   this.ast_nodes = [];
+  this.dependent_namespaces = [];
 }
 
 Namespace.prototype.exportsMap = function () {
@@ -139,6 +140,12 @@ Namespace.prototype.exportsMap = function () {
       value: exported.data.accessor
     };
   });
+}
+
+Namespace.prototype.requiresNamespace = function (ns) {
+  if (!~this.dependent_namespaces.indexOf(ns)) {
+    this.dependent_namespaces.push(ns);
+  }
 }
 
 // var env = new Namespace();

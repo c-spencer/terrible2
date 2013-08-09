@@ -5383,7 +5383,7 @@ module.exports = amdefine;
 
 })(require("__browserify_process"),"/node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js")
 },{"__browserify_process":27,"path":25}],18:[function(require,module,exports){
-module.exports=module.exports={
+module.exports={
   "name": "escodegen",
   "description": "ECMAScript code generator",
   "homepage": "http://github.com/Constellation/escodegen.html",

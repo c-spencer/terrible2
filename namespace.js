@@ -85,8 +85,9 @@ Scope.prototype.update = function (name, attrs) {
 Scope.prototype.expose = function (name, value) {
   this.logical_frame[name] = {
     type: 'any',
-    accessor: JS.Identifier(name),
-    value: value
+    accessor: Terr.NamespaceGet(null, name, name),
+    value: value,
+    top_level: true
   };
 };
 
@@ -126,6 +127,7 @@ Scope.prototype.exports = function () {
 function Namespace (name, scope) {
   this.name = name;
   this.scope = scope;
+  this.scope.top_level = true;
 
   this.scope.refer(['terrible', 'core'], require('./core'));
 

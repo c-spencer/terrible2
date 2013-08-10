@@ -210,30 +210,42 @@ builtins = {
         var js_name = munged_name;
       }
 
+      var ns_name = env.env.current_namespace.name;
+
+      if (env.scope.top_level) {
+        var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
+      } else {
+        var accessor = Terr.Identifier(js_name);
+      }
+
       env.scope.addSymbol(munged_name, {
         type: 'any',
-        accessor: Terr.Identifier(js_name),
+        accessor: accessor,
         js_name: js_name,
-        export: false
+        export: false,
+        top_level: env.scope.top_level
       });
 
       // TOTHINK: Treat value as a new scope?
-
-      id = walker(env)(id);
 
       if (val !== undefined) {
         val = walker(env)(val);
         if (val === null) {
           return undefined;
         } else if (val.type == "Fn") {
-          val.id = id;
+          val.id = Terr.Identifier(munged_name);
           // return val;
         }
 
         env.scope.update(munged_name, { node: val });
       }
 
-      return Terr.Var(id, val);
+      if (env.scope.top_level) {
+        // interactive set
+        return Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var");
+      } else {
+        return Terr.Var(accessor, val);
+      }
     } else {
       throw "Can't var a multi-part id."
       // var resolved = env.scope.resolve(id.name());
@@ -260,7 +272,7 @@ builtins = {
     }
 
     if (parsed_id.parts.length === 0) {
-      var ns_name = opts.env.env.current_namespace.name;
+      var ns_name = env.env.current_namespace.name;
       var munged_name = mungeSymbol(parsed_id.root);
 
       if (env.scope.logicalScoped(munged_name)) {
@@ -273,28 +285,29 @@ builtins = {
         var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + munged_name;
       }
 
+      var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
+
       env.scope.addSymbol(munged_name, {
         type: 'any',
-        accessor: Terr.Identifier(js_name),
+        accessor: accessor,
         js_name: js_name,
-        export: true
+        export: true,
+        top_level: true
       });
-
-      id = walker(env)(id);
 
       if (val !== undefined) {
         val = walker(env)(val);
         if (val === null) {
           return undefined;
         } else if (val.type == "Fn") {
-          val.id = id;
+          val.id = Terr.Identifier(munged_name);
           // return val;
         }
 
         env.scope.update(munged_name, { node: val });
       }
 
-      return Terr.Var(id, val);
+      return Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var");
     } else {
       throw "Can't def a multi-part id."
     }
@@ -360,14 +373,6 @@ builtins = {
       }
 
       var walked_body = body.map(walker(fn_env));
-
-      // Hoist experiment
-      // var terr_body = Terr.Seq(
-      //   fn_env.scope.jsScope(function (m) { return !m.implicit; }).map(function (v) {
-      //     return Terr.Var(Terr.Identifier(v));
-      //   }).concat(walked_body)
-      // );
-
       var terr_body = Terr.Seq(walked_body);
 
       return Terr.SubFn(formal_args, terr_body, formal_args.length, rest_arg != null);
@@ -459,7 +464,18 @@ builtins = {
     var seq = [];
 
     for (var i = 0, len = settings.length; i < len; i += 2) {
-      seq.push(Terr.Assign(walker(settings[i]), walker(settings[i + 1])));
+      var left = walker(settings[i]);
+      var right = walker(settings[i + 1]);
+
+      if (left.type == "NamespaceGet") {
+        left.type = "NamespaceSet";
+        left.value = right;
+        left.declaration = "assign";
+
+        seq.push(left);
+      } else {
+        seq.push(Terr.Assign(left, right));
+      }
     }
 
     return Terr.Seq(seq);
@@ -562,65 +578,34 @@ builtins = {
 
 function compile_eval (node, env) {
 
-  // Compilation/evalution strategy:
-  // Take a known scope, and extract exposed variables in that scope an env map,
-  // then use with inside the evaluation to capture changes to that env.
-  //
-  // Any variables declared by the block will already be set as in scope, so this
-  // correctly initialises new variables, as well as updating others through
-  // side effects.
+  var ENV = {
+    get: function (namespace, name) {
+      if (namespace === null) {
+        return env.scope.resolve(name).value;
+      }
+      return env.findNamespace(namespace).scope.resolve(name).value;
+    },
+    set: function (namespace, name, value) {
+      if (namespace === null) {
+        env.scope.update(name, { value: value });
+      } else {
+        env.findNamespace(namespace).scope.update(name, { value: value });
+      }
+      return value;
+    }
+  };
 
-  var scope = env.current_namespace.scope;
-
-  // Get an aggregated map of the current scope.
-  var frame = scope.jsScope(function (entry) {
-    return !entry.external;
-  });
-
-  var to_scope = Object.keys(frame);
-
-  var unmap = {};
-  var agg = {};
-  to_scope.forEach(function (key) {
-    var js_name = frame[key].accessor.name || key;
-    unmap[js_name] = key;
-    agg[js_name] = frame[key].value;
-  });
-
-  var to_rescope = Object.keys(unmap);
-
-  env.current_namespace.dependent_namespaces.forEach(function (ns) {
-    var scope = ns.scope;
-
-    var exported_scope = scope.jsScope(function (entry) {
-      return entry.export;
-    });
-
-    Object.keys(exported_scope).forEach(function (key) {
-      var entry = exported_scope[key];
-      var js_name = entry.accessor.name;
-      agg[js_name] = entry.value;
-    });
-  });
-
+  // TODO: better way od doing this
+  Terr.INTERACTIVE = true;
   var compile_nodes = Terr.CompileToJS(node, "return");
 
-  var js = codegen.generate({
-    type: "WithStatement",
-    object: JS.Identifier("$env"),
-    body: JS.Block(compile_nodes)
-  });
+  var js = codegen.generate(JS.Block(compile_nodes));
 
   // console.log("<--Compile Eval-->")
-  // console.log(js);
+  console.log(js);
   // console.log("<--Run Compile Eval-->");
-  var ret = new Function('$env', js)(agg);
+  var ret = new Function('$ENV', js)(ENV);
   // console.log("<--End Compile Eval-->")
-
-  // Update the scope values.
-  to_rescope.forEach(function (k) {
-    scope.update(unmap[k], { value: agg[k] });
-  });
 
   return ret;
 }
@@ -716,7 +701,9 @@ walk_handlers = {
 
         var target = walker(head);
 
-        if (fn_node.arities.length == 1) { // mono-arity, no sub-dispatch
+        if (env.env.interactive) {
+          // arities could change out underneath us, so don't specialise here
+        } else if (fn_node.arities.length == 1) { // mono-arity, no sub-dispatch
           if (fn_node.variadic) {
             if (tail.length < fn_node.variadic) {
               throw "Function `" + name + "` expects at least " + fn_node.variadic + " arguments, but " + tail.length + " provided."
@@ -767,7 +754,16 @@ walk_handlers = {
       throw "Couldn't resolve `" + node.name + "`";
     }
 
-    var root = resolved.accessor;
+    if (resolved.top_level) {
+      var root = Terr.NamespaceGet(
+        parsed_node.namespace || env.env.current_namespace.name,
+        mungeSymbol(parsed_node.root),
+        resolved.accessor.js_name
+      );
+    } else {
+      var root = resolved.accessor;
+    }
+
     var walker = walker(env);
 
     for (var i = 0, len = parsed_node.parts.length; i < len; ++i) {
@@ -778,17 +774,18 @@ walk_handlers = {
   },
 
   "Keyword": function (node, walker, env) {
-    return Terr.Call(
-      Terr.Identifier("refer$terrible$core", ["keyword"]),
-      [Terr.Literal(node.toString())]
-    );
+    return walker(env)(core.list("keyword", node.toString()));
+
+    // Terr.Call(
+    //   Terr.Member(
+    //     Terr.Identifier("refer$terrible$core"), Terr.Literal("keyword")
+    //   ),
+    //   [Terr.Literal(node.toString())]
+    // );
   }
 }
 
 walk_handler = function (node, walker, env) {
-
-  console.log(node);
-
   if (node instanceof core.list) {
     return walk_handlers.List(node, walker, env);
   } if (node instanceof core.keyword) {
@@ -833,7 +830,6 @@ WalkingEnv.prototype.setQuoted = function (quoted) {
 }
 
 function process_form (form, env, quoted) {
-  form.topLevel = true;
 
   // console.log("form", require('util').inspect(form, false, 20));
 

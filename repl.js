@@ -2,9 +2,10 @@ var Environment = require('./Environment').Environment;
 
 var target = "browser";
 var mode = "library";
+var interactive = false;
 
 function compileTerrible(text) {
-  var env = new Environment(target);
+  var env = new Environment(target, interactive);
   var messages = [];
   env.scope.expose('print', function (v) {
     messages.push("> " + v);
@@ -46,6 +47,15 @@ document.getElementById('environment-mode').addEventListener('change',
   function () {
     var el = document.getElementById('environment-mode');
     mode = el.value;
+    doCompile(true);
+  }
+);
+
+document.getElementById('environment-interactive').addEventListener('change',
+  function () {
+    var el = document.getElementById('environment-interactive');
+    interactive = el.checked;
+    console.log("interactive", interactive);
     doCompile(true);
   }
 );

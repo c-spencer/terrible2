@@ -2,6 +2,8 @@ var JS = require('./JS');
 
 var Terr = exports;
 
+Terr.INTERACTIVE = false;
+
 var compilers = {
   Fn: {
     fields: ['bodies', 'arities', 'variadic'],
@@ -133,15 +135,50 @@ var compilers = {
   },
 
   Identifier: {
-    fields: ['name', 'parts'],
+    fields: ['name'],
     compile: function (node, mode) {
-      var base = JS.Identifier(node.name);
-      if (node.parts) {
-        for (var i = 0; i < node.parts.length; ++i) {
-          base = JS.MemberExpressionComputed(base, JS.Literal(node.parts[i]));
+      return ExpressionToMode(JS.Identifier(node.name), mode);
+    }
+  },
+
+  NamespaceGet: {
+    fields: ['namespace', 'name', 'js_name'],
+    compile: function (node, mode) {
+      if (!Terr.INTERACTIVE) {
+        return compilers.Identifier.compile({name: node.js_name}, mode);
+      }
+
+      return Terr.CompileToJS(Terr.Call(
+        Terr.Member(Terr.Identifier("$ENV"), Terr.Literal("get")),
+        [ Terr.Literal(node.namespace),
+          Terr.Literal(node.name) ]
+      ), mode);
+    }
+  },
+
+  NamespaceSet: {
+    fields: ['namespace', 'name', 'js_name', 'value', 'declaration'],
+    compile: function (node, mode) {
+      if (!Terr.INTERACTIVE) {
+        if (node.declaration == "var") {
+          return compilers.Var.compile({
+            symbol: Terr.Identifier(node.js_name),
+            expression: node.value
+          }, mode);
+        } else {
+          return compilers.Assign.compile({
+            left: Terr.Identifier(node.js_name),
+            right: node.value
+          }, mode);
         }
       }
-      return ExpressionToMode(base, mode);
+
+      return Terr.CompileToJS(Terr.Call(
+        Terr.Member(Terr.Identifier("$ENV"), Terr.Literal("set")),
+        [ Terr.Literal(node.namespace),
+          Terr.Literal(node.name),
+          node.value ]
+      ), mode);
     }
   },
 

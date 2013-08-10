@@ -5,9 +5,11 @@ var JS = require('./js');
 var reader = require('./reader');
 var parser = require('./parser');
 
-function Environment (target) {
+function Environment (target, interactive) {
 
   var id_counter = 0;
+
+  this.interactive = interactive;
 
   this.genID = function (root) {
     return root + "_$" + (++id_counter);
@@ -92,6 +94,8 @@ Environment.prototype.asJS = function (mode) {
     seq = Terr.Call(fn, []);
   }
 
+  // TODO: better way of doing this, threading a context or such.
+  Terr.INTERACTIVE = this.interactive;
   var js_ast = Terr.CompileToJS(seq, "statement");
 
   return codegen.generate(JS.Program(js_ast));

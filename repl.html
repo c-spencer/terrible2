@@ -38,6 +38,7 @@
         background: #444;
         right: 0;
         width: 50%;
+        color: #f0f0f0;
       }
       body {
         margin: 0;
@@ -83,6 +84,10 @@
         <option value="library" selected>library</option>
         <option value="standalone">standalone</option>
       </select>
+      <label>
+        <input type="checkbox" id="environment-interactive">
+        Interactive
+      </label>
     </div>
     <textarea class="panel output" id="terrible-log"></textarea>
     <script src="./repl-browser.js"></script>

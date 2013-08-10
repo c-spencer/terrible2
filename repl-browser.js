@@ -6427,7 +6427,12 @@ function syntaxQuoteReader (buffer, tick) {
 }
 
 function unquoteReader (buffer, apostrophe) {
-  return core.list(core.symbol('unquote'), this.read(buffer));
+  if (buffer.lookahead(1) == "@") {
+    buffer.read1();
+    return core.list(core.symbol('unquote-splicing'), this.read(buffer));
+  } else {
+    return core.list(core.symbol('unquote'), this.read(buffer));
+  }
 }
 
 function splatReader (buffer, tilde) {

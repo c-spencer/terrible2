@@ -5,6 +5,10 @@ var codegen = require('escodegen');
 var JS = require('./js');
 var reader = require('./reader');
 var parser = require('./parser');
+var core = require('./core');
+var fs = require('fs');
+
+var terrible_core = "(ns terrible.core)\n\n(defn list [& args]\n  (List.apply nil args))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol [name]\n  (Symbol name))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n";
 
 function Environment (target, interactive) {
 
@@ -29,7 +33,15 @@ function Environment (target, interactive) {
   this.scope.expose('JSON', JSON);
   this.scope.expose('console', console);
 
+  this.scope.expose('List', core.list);
+  this.scope.expose('Symbol', core.symbol);
+  this.scope.expose('Keyword', core.keyword);
+
   this.namespaces = [];
+
+  this.current_namespace = this.getNamespace('terrible.core');
+
+  this.evalText(terrible_core);
 
   this.current_namespace = this.getNamespace('user');
 };
@@ -143,7 +155,7 @@ Environment.prototype.asJS = function (mode) {
 exports.Environment = Environment;
 
 })()
-},{"./js":4,"./namespace":5,"./parser":19,"./reader":20,"./terr-ast":22,"escodegen":6}],2:[function(require,module,exports){
+},{"./core":3,"./js":4,"./namespace":5,"./parser":19,"./reader":20,"./terr-ast":22,"escodegen":6,"fs":25}],2:[function(require,module,exports){
 exports.Identifier = function(name) {
   return {
     type: 'Identifier',
@@ -391,6 +403,18 @@ function List() {
   } else {
     return new (Function.prototype.bind.apply(List, [null].concat(values)));
   }
+}
+List.prototype.concat = function (arg) {
+  this.values = this.values.concat(arg);
+  return this;
+}
+List.prototype.push = function () {
+  this.values.push.apply(this.values, arguments);
+  return this;
+}
+List.prototype.toString = function () {
+  var vs = this.values.map(function (v) { return v.toString(); });
+  return "(" + vs.join(" ") + ")";
 }
 exports.list = List;
 
@@ -688,6 +712,18 @@ Scope.prototype.resolve = function (name) {
 
     return this.parent ? this.parent.resolve(name) : false;
   }
+}
+
+Scope.prototype.resolveNamespace = function (alias) {
+  for (var i = 0; i < this.ns_references.length; ++i) {
+    var ref = this.ns_references[i];
+
+    if (ref.alias === alias) {
+      return ref.ns;
+    }
+  }
+
+  return this.parent? this.parent.resolveNamespace(alias) : false;
 }
 
 Scope.prototype.nameClash = function (name) {
@@ -5430,7 +5466,7 @@ function amdefine(module, require) {
 module.exports = amdefine;
 
 })(require("__browserify_process"),"/node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js")
-},{"__browserify_process":27,"path":25}],18:[function(require,module,exports){
+},{"__browserify_process":28,"path":26}],18:[function(require,module,exports){
 module.exports=module.exports={
   "name": "escodegen",
   "description": "ECMAScript code generator",
@@ -5636,10 +5672,17 @@ function parseSymbol (symb) {
 
 function resolveSymbol (env, parsed_symbol) {
   if (parsed_symbol.namespace) {
-    var ns = env.env.findNamespace(parsed_symbol.namespace);
+
+    var ns = env.scope.resolveNamespace(parsed_symbol.namespace) ||
+             env.env.findNamespace(parsed_symbol.namespace);
+
     if (!ns) {
       throw "Couldn't find namespace `" + parsed_symbol.namespace + "`"
     }
+
+    // If aliased, updated the parsed namespace.
+    parsed_symbol.namespace = ns.name;
+
     env.env.current_namespace.requiresNamespace(ns);
     var scope = ns.scope;
   } else {
@@ -5953,13 +5996,15 @@ builtins = {
     return Terr.Seq([]);
   },
 
-  "refer": function (opts, symbol) {
+  "refer": function (opts, symbol, alias) {
     var ns = opts.env.env.findNamespace(symbol.name);
     if (!ns) {
       throw "Couldn't resolve namespace `" + symbol.name + "`";
     }
 
-    opts.env.scope.refer(symbol.name, null,
+    var alias = alias ? alias.name : null;
+
+    opts.env.scope.refer(symbol.name, alias,
                          opts.env.env.findNamespace(symbol.name));
 
     return Terr.Seq([]);
@@ -6091,6 +6136,19 @@ builtins = {
     return opts.walker(opts.env.setQuoted("quote"))(arg);
   },
 
+  "unquote": function (opts, arg) {
+    return opts.walker(opts.env.setQuoted(false))(arg);
+  },
+
+  "unquote-splicing": function (opts, arg) {
+    if (opts.env.quoted != "syntax") {
+      throw "Cannot call unquote-splicing outside of syntax-quote."
+    }
+    var result = opts.walker(opts.env.setQuoted(false))(arg);
+    result.$splice = true;
+    return result;
+  },
+
   "syntax-quote": function (opts, arg) {
     return opts.walker(opts.env.setQuoted("syntax"))(arg);
   }
@@ -6172,17 +6230,57 @@ walk_handlers = {
       return loc(node, form);
     }
 
-    if (env.quoted) {
-      var quoted_walker = walker(env);
-      var unquoted_walker = walker(env.setQuoted(false));
-      return _loc(Terr.Call(
-        unquoted_walker(core.symbol('list')),
-        node.values.map(quoted_walker)
-      ));
-    }
-
     var head = node.values[0];
     var tail = node.values.slice(1);
+
+    if (env.quoted) {
+
+      if (head && isSymbol(head) && (head.name == 'unquote' ||
+                                     head.name == "unquote-splicing")) {
+
+      } else {
+        var quoted_walker = walker(env);
+        var unquoted_walker = walker(env.setQuoted(false));
+
+        var list_symb = unquoted_walker(core.symbol('terrible.core/list'));
+        var values = node.values.map(quoted_walker);
+
+        if (env.quoted == "syntax") {
+
+          var args = [];
+          var root = null;
+
+          var pack_args = function () {
+            if (!root) {
+              root = Terr.Call(list_symb, args);
+              args = [];
+            } else {
+              root = Terr.Call(Terr.Member(root, Terr.Literal("push")), args);
+              args = [];
+            }
+          }
+
+          values.forEach(function (v) {
+            if (v.$splice) {
+              pack_args();
+              root = Terr.Call(Terr.Member(root, Terr.Literal("concat")), [v]);
+            } else {
+              args.push(v);
+            }
+          });
+          if (!root || args.length > 0) {
+            pack_args();
+          }
+
+          return _loc(root);
+        } else {
+          return _loc(Terr.Call(
+            list_symb,
+            values
+          ));
+        }
+      }
+    }
 
     if (head && isSymbol(head)) {
 
@@ -6261,6 +6359,9 @@ walk_handlers = {
 
       return _loc(Terr.Call(loc(head, target || walker(head)),
                             tail.map(walker)));
+    } else if (head && isList(head)) {
+      var walker = walker(env);
+      return _loc(Terr.Call(walker(head), tail.map(walker)));
     } else {
       throw "Cannot call `" + JSON.stringify(head) + "` as function."
     }
@@ -6268,11 +6369,28 @@ walk_handlers = {
 
   "Symbol": function (node, walker, env) {
 
-    if (env.quoted) {
+    if (env.quoted == "quote") {
       walker = walker(env.setQuoted(false));
       return loc(node, Terr.Call(
-        walker(core.symbol('symbol')),
-        [node.name]
+        walker(core.symbol('terrible.core/symbol')),
+        [Terr.Literal(node.name)]
+      ));
+    } else if (env.quoted == "syntax") {
+      var parsed_node = parseSymbol(node.name);
+      var resolved = resolveSymbol(env, parsed_node);
+
+      if (!resolved) {
+        console.trace();
+        throw "Couldn't resolve `" + node.name + "`";
+      }
+
+      walker = walker(env.setQuoted(false));
+
+      var ns = parsed_node.namespace || env.env.current_namespace.name;
+
+      return loc(node, Terr.Call(
+        walker(core.symbol('terrible.core/symbol')),
+        [Terr.Literal(ns + "/" + [parsed_node.root].concat(parsed_node.parts).join("."))]
       ));
     }
 
@@ -6304,7 +6422,7 @@ walk_handlers = {
   },
 
   "Keyword": function (node, walker, env) {
-    return walker(env)(core.list("keyword", node.toString()));
+    return walker(env)(core.list(core.symbol("terrible.core/keyword"), node.toString()));
 
     // Terr.Call(
     //   Terr.Member(
@@ -6954,7 +7072,7 @@ exports.Reader = Reader
 exports.printString = print_str;
 
 })()
-},{"./core":3,"util":26}],21:[function(require,module,exports){
+},{"./core":3,"util":27}],21:[function(require,module,exports){
 var Environment = require('./Environment').Environment;
 
 // INPUT OUTPUT
@@ -7515,6 +7633,7 @@ Terr.CompileToJS = function (ast, mode) {
     return compilers[ast.type].compile(ast, mode);
   } else {
     console.trace();
+    console.log(ast);
     throw "Implement Compiler for " + ast.type;
   }
 }
@@ -7741,7 +7860,10 @@ EventEmitter.prototype.listeners = function(type) {
 };
 
 })(require("__browserify_process"))
-},{"__browserify_process":27}],25:[function(require,module,exports){
+},{"__browserify_process":28}],25:[function(require,module,exports){
+// nothing to see here... no file methods for the browser
+
+},{}],26:[function(require,module,exports){
 (function(process){function filter (xs, fn) {
     var res = [];
     for (var i = 0; i < xs.length; i++) {
@@ -7919,7 +8041,7 @@ exports.relative = function(from, to) {
 };
 
 })(require("__browserify_process"))
-},{"__browserify_process":27}],26:[function(require,module,exports){
+},{"__browserify_process":28}],27:[function(require,module,exports){
 var events = require('events');
 
 exports.isArray = isArray;
@@ -8272,7 +8394,7 @@ exports.format = function(f) {
   return str;
 };
 
-},{"events":24}],27:[function(require,module,exports){
+},{"events":24}],28:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};

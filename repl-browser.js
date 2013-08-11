@@ -53,7 +53,7 @@ Environment.prototype.getNamespace = function (name) {
   }
 };
 
-Environment.prototype.evalText = function (text) {
+Environment.prototype.evalText = function (text, error_cb) {
   var forms = this.readSession.readString(text);
 
   var results = [];
@@ -72,11 +72,15 @@ Environment.prototype.evalText = function (text) {
       this.current_namespace.ast_nodes =
         this.current_namespace.ast_nodes.concat(nodes);
     } catch (exception) {
-      results.push({
-        form: form,
-        text: form.$text,
-        value: exception
-      });
+      if (error_cb) {
+        error_cb(form, form.$text, exception);
+      } else {
+        results.push({
+          form: form,
+          text: form.$text,
+          exception: exception
+        });
+      }
     }
   }
 
@@ -651,6 +655,7 @@ function Scope (parent, js_frame) {
   this.parent = parent;
   this.logical_frame = {};
   this.js_frame = js_frame || {};
+  this.ns_references = [];
 }
 
 Scope.prototype.addSymbol = function (name, metadata) {
@@ -670,6 +675,17 @@ Scope.prototype.resolve = function (name) {
   if (this.logical_frame[name]) {
     return this.logical_frame[name];
   } else {
+    for (var i = 0; i < this.ns_references.length; ++i) {
+      var ref = this.ns_references[i];
+
+      if (ref.alias === null) {
+        var ns_resolved = ref.ns.scope.resolve(name);
+        if (ns_resolved) {
+          return ns_resolved;
+        }
+      }
+    }
+
     return this.parent ? this.parent.resolve(name) : false;
   }
 }
@@ -735,26 +751,13 @@ Scope.prototype.expose = function (name, value) {
   };
 };
 
-Scope.prototype.refer = function (root, map) {
-
-  var root_name = "refer$" + root.join("$");
-  var root = Terr.Identifier(root_name);
-
-  for (var k in map) {
-    this.logical_frame[k] = {
-      type: 'any',
-      export: false,
-      accessor: Terr.Member(root, Terr.Literal(k)),
-      value: map[k],
-      namespace: root
-    }
+Scope.prototype.refer = function (namespace, alias, ns) {
+  for (var i = 0; i < this.ns_references.length; ++i) {
+    var ref = this.ns_references[i];
+    if (ref.namespace == namespace && ref.alias == alias) return;
   }
 
-  this.logical_frame[root_name] = this.js_frame[root_name] = {
-    type: 'any',
-    accessor: root,
-    value: map
-  };
+  this.ns_references.push({namespace: namespace, alias: alias, ns: ns});
 };
 
 Scope.prototype.exports = function () {
@@ -772,8 +775,6 @@ function Namespace (name, scope) {
   this.name = name;
   this.scope = scope;
   this.scope.top_level = true;
-
-  this.scope.refer(['terrible', 'core'], require('./core'));
 
   this.ast_nodes = [];
   this.dependent_namespaces = [];
@@ -814,7 +815,7 @@ Namespace.prototype.requiresNamespace = function (ns) {
 exports.Namespace = Namespace;
 exports.Scope = Scope;
 
-},{"./core":3,"./js":4,"./terr-ast":22}],6:[function(require,module,exports){
+},{"./js":4,"./terr-ast":22}],6:[function(require,module,exports){
 (function(global){/*
   Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2012-2013 Michael Ficarra <escodegen.copyright@michael.ficarra.me>
@@ -5952,6 +5953,18 @@ builtins = {
     return Terr.Seq([]);
   },
 
+  "refer": function (opts, symbol) {
+    var ns = opts.env.env.findNamespace(symbol.name);
+    if (!ns) {
+      throw "Couldn't resolve namespace `" + symbol.name + "`";
+    }
+
+    opts.env.scope.refer(symbol.name, null,
+                         opts.env.env.findNamespace(symbol.name));
+
+    return Terr.Seq([]);
+  },
+
   "set!": function (opts) {
     var walker = opts.walker,
         env = opts.env;
@@ -6076,6 +6089,10 @@ builtins = {
 
   "quote": function (opts, arg) {
     return opts.walker(opts.env.setQuoted("quote"))(arg);
+  },
+
+  "syntax-quote": function (opts, arg) {
+    return opts.walker(opts.env.setQuoted("syntax"))(arg);
   }
 }
 
@@ -6954,10 +6971,18 @@ function compileTerrible(text) {
   });
 
   try {
-    env.evalText(text);
+    env.evalText(text, function (form, source, exc) {
+      messages.push("! " + source.trim());
+      messages.push("! " + (exc.message ? exc.message : exc));
+      if (exc.stack) {
+        messages.push("! " + exc.stack);
+      }
+    });
   } catch (exc) {
     messages.push("! " + (exc.message ? exc.message : exc));
-    messages.push(exc.stack ? ("! " + exc.stack) : "");
+    if (exc.stack) {
+      messages.push("! " + exc.stack);
+    }
   }
 
   return { js: env.asJS(mode), log: messages };
@@ -7008,7 +7033,7 @@ doCompile();
 
 window.replEnvironment = new Environment("browser", false);
 
-function addResult(form, value) {
+function addResult(form, value, result_class) {
   var el = document.getElementById('evaled-forms');
   var new_el = document.createElement('div');
   new_el.setAttribute('class', 'evaled');
@@ -7019,7 +7044,7 @@ function addResult(form, value) {
   new_el.appendChild(form_el);
 
   var value_el = document.createElement('pre');
-  value_el.setAttribute('class', 'value');
+  value_el.setAttribute('class', result_class);
   value_el.innerText = value;
   new_el.appendChild(value_el);
 
@@ -7032,7 +7057,11 @@ function replEval(text) {
   var results = replEnvironment.evalText(text + "\n");
 
   results.forEach(function (result) {
-    addResult(result.text.trim(), result.value);
+    if (result.exception) {
+      addResult(result.text.trim(), result.exception, "value exception");
+    } else {
+      addResult(result.text.trim(), result.value, "value");
+    }
   });
 }
 

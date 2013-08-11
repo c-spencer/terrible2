@@ -6,14 +6,18 @@
 (def symbol (fn [name]
   (Symbol name)))
 
-(def macro
+(var -macro
   (fn [f]
     (set! f.$macro true)
     f))
 
+(def macro (-macro
+  (fn [& body]
+    `(-macro (fn ~@body)))))
+
 (def defmacro
-  (macro (fn [name & body]
-    `(def ~name (macro (fn ~@body))))))
+  (macro [name & body]
+    `(def ~name (macro ~@body))))
 
 (defmacro defn [name & body]
   `(def ~name (fn ~@body)))

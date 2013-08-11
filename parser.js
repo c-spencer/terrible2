@@ -829,13 +829,14 @@ walk_handlers = {
 
   "Symbol": function (node, walker, env) {
 
-    if (env.quoted == "quote") {
+    if (env.quoted == "quote" || builtins[node.name]) {
       walker = walker(env.setQuoted(false));
       return loc(node, Terr.Call(
         walker(core.symbol('terrible.core/symbol')),
         [Terr.Literal(node.name)]
       ));
     } else if (env.quoted == "syntax") {
+
       var parsed_node = parseSymbol(node.name);
       var resolved = resolveSymbol(env, parsed_node);
 

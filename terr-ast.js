@@ -176,8 +176,7 @@ var compilers = {
       if (!Terr.INTERACTIVE) {
         if (node.declaration == "var") {
           return compilers.Var.compile(loc(node, {
-            symbol: Terr.Identifier(node.js_name),
-            expression: node.value
+            pairs: [[Terr.Identifier(node.js_name), node.value]]
           }), mode);
         } else {
           return compilers.Assign.compile(loc(node, {
@@ -217,11 +216,18 @@ var compilers = {
   },
 
   Var: {
-    fields: ['symbol', 'expression'],
+    fields: ['pairs'],
     compile: function (node, mode) {
-      var symb = Terr.CompileToJS(node.symbol, "expression");
-      var expr = Terr.CompileToJS(node.expression, "expression");
-      var decl = JS.VariableDeclaration([JS.VariableDeclarator(symb, expr)]);
+
+      var symb, expr;
+
+      var mapped = node.pairs.map(function (pair) {
+        symb = Terr.CompileToJS(pair[0], "expression");
+        expr = Terr.CompileToJS(pair[1], "expression");
+        return JS.VariableDeclarator(symb, expr);
+      });
+
+      var decl = JS.VariableDeclaration(mapped);
 
       if (mode == "expression") {
         return expr;

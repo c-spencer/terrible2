@@ -259,6 +259,7 @@ builtins = {
       return Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var");
     } else {
       return Terr.Var(accessor, val);
+      return Terr.Var([[accessor, val]]);
     }
   },
 

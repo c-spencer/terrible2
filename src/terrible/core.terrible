@@ -70,9 +70,8 @@
 
 (defmacro let [bindings & body]
   (var vars [])
-  ; I really need to add iteration somewhere..
-  (bindings.forEach (fn [v i]
-    (if (not (mod i 2))
-      (vars.push `(var ~v ~(get bindings (+ i 1))))
-  )))
+  (js-for [i 0] (< i bindings.length) (set! i (+ i 2))
+    (var s (get bindings i)
+         v (get bindings (+ i 1)))
+    (vars.push `(var ~s ~v)))
   `(do ~@vars ~@body))

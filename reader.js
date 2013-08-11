@@ -64,14 +64,24 @@ Buffer.prototype.append = function (str) {
   this.string += str;
 }
 
+Buffer.prototype.truncate = function () {
+  this.string = this.string.substring(0, this.pos);
+}
+
+Buffer.prototype.remaining = function () {
+  return this.string.substring(this.pos);
+}
+
 // Reader
 
 var symbolPattern = /^([:][^\d\s]|[^:\d\s])[^\n\t\r\s,]*$/
 
 // Reader macros
 
-function unmatchedDelimiter() {
-  throw "UnmatchedDelimiter";
+function unmatchedDelimiter(c) {
+  return function () {
+    throw "UnmatchedDelimiter `" + c + "`";
+  }
 }
 
 function listReader (buffer, openparen) {
@@ -317,9 +327,9 @@ Reader.prototype.macros = {
   "[": vectorReader,
   "{": hashReader,
   "(": listReader,
-  "]": unmatchedDelimiter,
-  "}": unmatchedDelimiter,
-  ")": unmatchedDelimiter,
+  "]": unmatchedDelimiter("]"),
+  "}": unmatchedDelimiter("}"),
+  ")": unmatchedDelimiter(")"),
   ";": commentReader,
   "`": syntaxQuoteReader,
   "'": quoteReader,
@@ -467,12 +477,17 @@ Reader.prototype.newReadSession = function () {
       reader = this;
 
   return {
+    buffer: buffer,
     readString: function (str) {
       buffer.append(str);
-      var forms = [], buffer_state = buffer.save();
+      var forms = [], buffer_state;
       try {
+        buffer_state = buffer.save();
         while (form = reader.read(buffer)) {
           forms.push(form);
+
+          form.$text = buffer.string.substring(buffer_state.pos, buffer.pos);
+
           buffer_state = buffer.save();
         }
       } catch (exception) {
@@ -480,7 +495,9 @@ Reader.prototype.newReadSession = function () {
           buffer.restore(buffer_state);
           return forms;
         } else {
-          throw exception;
+          buffer.restore(buffer_state);
+          forms.$exception = exception;
+          return forms;
         }
       }
       return forms;

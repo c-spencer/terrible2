@@ -55,14 +55,37 @@ Environment.prototype.getNamespace = function (name) {
 Environment.prototype.evalText = function (text) {
   var forms = this.readSession.readString(text);
 
+  var results = [];
+
   for (var i = 0, len = forms.length; i < forms.length; ++i) {
     var form = forms[i];
-    var nodes = parser.process(form, this, false);
+    try {
+      var processed = parser.process(form, this, false);
+      processed.form = form;
+      processed.text = form.$text;
 
-    this.current_namespace.ast_nodes = this.current_namespace.ast_nodes.concat(
-      nodes
-    );
+      var nodes = processed.ast;
+
+      results.push(processed);
+
+      this.current_namespace.ast_nodes =
+        this.current_namespace.ast_nodes.concat(nodes);
+    } catch (exception) {
+      results.push({
+        form: form,
+        text: form.$text,
+        value: exception
+      });
+    }
   }
+
+  if (forms.$exception) {
+    var text = this.readSession.buffer.remaining().trim();
+    this.readSession.buffer.truncate();
+    results.push({ text: text, value: forms.$exception });
+  }
+
+  return results;
 };
 
 Environment.prototype.asJS = function (mode) {

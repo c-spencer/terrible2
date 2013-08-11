@@ -599,10 +599,10 @@ function compile_eval (node, env) {
   Terr.INTERACTIVE = true;
   var compile_nodes = Terr.CompileToJS(node, "return");
 
-  var js = codegen.generate(JS.Block(compile_nodes));
+  var js = codegen.generate(JS.Program(compile_nodes));
 
   // console.log("<--Compile Eval-->")
-  console.log(js);
+  // console.log(js);
   // console.log("<--Run Compile Eval-->");
   var ret = new Function('$ENV', js)(ENV);
   // console.log("<--End Compile Eval-->")
@@ -841,7 +841,7 @@ function process_form (form, env, quoted) {
 
   // console.log(require('util').inspect(scope, false, 10));
 
-  return ast;
+  return { ast: ast, value: value };
 }
 
 exports.process = process_form;

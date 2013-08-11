@@ -326,9 +326,9 @@ fnReader = function (buffer, openparen) {
   this.ARG_ENV = originalENV;
 
   if (form.values[0] && !(form.values[0] instanceof core.symbol)) {
-    return core.list.apply(null, [core.symbol('fn'), args].concat(form.values));
+    return core.list.apply(null, [core.symbol('lambda'), args].concat(form.values));
   } else {
-    return core.list(core.symbol('fn'), args, form);
+    return core.list(core.symbol('lambda'), args, form);
   }
 }
 

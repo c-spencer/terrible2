@@ -8,7 +8,7 @@ var parser = require('./parser');
 var core = require('./core');
 var fs = require('fs');
 
-var terrible_core = "(ns terrible.core)\n\n(def list (fn [& args]\n  (List.apply nil args)))\n\n(def symbol (fn [name]\n  (Symbol name)))\n\n(var set-macro\n  (fn [f]\n    (set! f.$macro true)\n    f))\n\n(def macro (set-macro\n  (fn [& body]\n    `(set-macro (fn ~@body)))))\n\n(def defmacro\n  (macro [name & body]\n    `(def ~name (macro ~@body))))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n";
+var terrible_core = "(ns terrible.core)\n\n(def list (lambda [& args]\n  (List.apply nil args)))\n\n(def symbol (lambda [name]\n  (Symbol name)))\n\n(var set-macro\n  (lambda [f]\n    (set! f.$macro true)\n    f))\n\n(def macro (set-macro\n  (lambda [& body]\n    `(set-macro (lambda ~@body)))))\n\n(def defmacro\n  (macro [name & body]\n    `(def ~name (macro ~@body))))\n\n(defmacro fn [& body]\n  `(lambda ~@body))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n";
 
 function Environment (target, interactive) {
 
@@ -5865,7 +5865,7 @@ builtins = {
     }
   },
 
-  "fn": function (opts, args) {
+  "lambda": function (opts, args) {
 
     var walker = opts.walker,
         env = opts.env;
@@ -6806,9 +6806,9 @@ fnReader = function (buffer, openparen) {
   this.ARG_ENV = originalENV;
 
   if (form.values[0] && !(form.values[0] instanceof core.symbol)) {
-    return core.list.apply(null, [core.symbol('fn'), args].concat(form.values));
+    return core.list.apply(null, [core.symbol('lambda'), args].concat(form.values));
   } else {
-    return core.list(core.symbol('fn'), args, form);
+    return core.list(core.symbol('lambda'), args, form);
   }
 }
 

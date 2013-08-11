@@ -320,7 +320,7 @@ builtins = {
     }
   },
 
-  "fn": function (opts, args) {
+  "lambda": function (opts, args) {
 
     var walker = opts.walker,
         env = opts.env;

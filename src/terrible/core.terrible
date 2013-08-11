@@ -1,23 +1,26 @@
 (ns terrible.core)
 
-(def list (fn [& args]
+(def list (lambda [& args]
   (List.apply nil args)))
 
-(def symbol (fn [name]
+(def symbol (lambda [name]
   (Symbol name)))
 
 (var set-macro
-  (fn [f]
+  (lambda [f]
     (set! f.$macro true)
     f))
 
 (def macro (set-macro
-  (fn [& body]
-    `(set-macro (fn ~@body)))))
+  (lambda [& body]
+    `(set-macro (lambda ~@body)))))
 
 (def defmacro
   (macro [name & body]
     `(def ~name (macro ~@body))))
+
+(defmacro fn [& body]
+  `(lambda ~@body))
 
 (defmacro defn [name & body]
   `(def ~name (fn ~@body)))

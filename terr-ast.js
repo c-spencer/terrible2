@@ -394,6 +394,25 @@ var compilers = {
         })
       ), mode);
     }
+  },
+
+  For: {
+    fields: ['init', 'test', 'update', 'body'],
+    compile: function (node, mode) {
+      if (mode == "expression") {
+        console.log("For not supported in expression position.")
+        throw "For not supported in expression position."
+      }
+
+      var for_statement = JS.ForStatement(
+        intoBlock(node.init, "statement"),
+        Terr.CompileToJS(node.test, "expression"),
+        Terr.CompileToJS(node.update, "expression"),
+        intoBlock(node.body, "statement")
+      )
+
+      return [for_statement];
+    }
   }
 }
 

@@ -506,14 +506,26 @@ builtins = {
     return Terr.Seq(args.map(walker));
   },
 
+  // (for [i 0 len 10] (< i len) (set! i (inc i))
+  //    i)
 
+  "js-for": function (opts, init, test, update) {
+    var walker = opts.walker,
+        env = opts.env;
 
-  // (jsmacro if [opts test cons alt]
-  //   (var walker (opts.walker opts.env))
-  //   (opts.Terr
-  //     (walker test)
-  //     (if cons (walker cons))
-  //     (if alt (walker alt))))
+    env = env.newScope(true, false);
+
+    var walker = walker(env);
+
+    var init = walker(core.list(core.symbol('var')).concat(init));
+    var test = walker(test);
+    var update = walker(update);
+    var body = Terr.Seq(Array.prototype.slice.call(arguments, 4).map(walker));
+
+    return Terr.For(init, test, update, body);
+  },
+
+  // (while (< i 10) (inc i))
 
   "if": function (opts, test, cons, alt) {
     var walker = opts.walker,

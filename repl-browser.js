@@ -5746,8 +5746,8 @@ builtins = {
   'and': makeBinary('&&'),
   '>': makeBinary('>'),
   '>=': makeBinary('>='),
-  '<': makeBinary('>'),
-  '<=': makeBinary('>='),
+  '<': makeBinary('<'),
+  '<=': makeBinary('<='),
   '/': makeBinary('/'),
   'instance?': makeBinary('instanceof'),
   'mod': makeBinary('%'),
@@ -5775,36 +5775,50 @@ builtins = {
   "var": function (opts, id, val) {
     var walker = opts.walker,
         env = opts.env,
-        munged_name = declaration_guard(env, "var", id),
-        ns_name = env.env.current_namespace.name;
+        ns_name = env.env.current_namespace.name,
+        decls = [],
+        inputs = Array.prototype.slice.call(arguments, 1);
 
-    if (env.scope.nameClash(munged_name)) {
-      var js_name = env.genID(munged_name);
-    } else {
-      var js_name = munged_name;
+    for (var i = 0; i < inputs.length; i += 2) {
+      var id = inputs[i],
+          val = inputs[i + 1],
+          munged_name = declaration_guard(env, "var", id);
+
+      if (env.scope.nameClash(munged_name)) {
+        var js_name = env.genID(munged_name);
+      } else {
+        var js_name = munged_name;
+      }
+
+      if (env.scope.top_level) {
+        var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
+      } else {
+        var accessor = Terr.Identifier(js_name);
+      }
+
+      env.scope.addSymbol(munged_name, {
+        type: 'any',
+        accessor: accessor,
+        js_name: js_name,
+        export: false,
+        top_level: env.scope.top_level
+      });
+
+      val = declaration_val(val, walker, env, munged_name);
+
+      if (env.scope.top_level) {
+        decls.push(Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var"));
+      } else {
+        decls.push([accessor, val]);
+      }
     }
 
     if (env.scope.top_level) {
-      var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
+      return Terr.Seq(decls);
     } else {
-      var accessor = Terr.Identifier(js_name);
+      return Terr.Var(decls);
     }
 
-    env.scope.addSymbol(munged_name, {
-      type: 'any',
-      accessor: accessor,
-      js_name: js_name,
-      export: false,
-      top_level: env.scope.top_level
-    });
-
-    val = declaration_val(val, walker, env, munged_name);
-
-    if (env.scope.top_level) {
-      return Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var");
-    } else {
-      return Terr.Var(accessor, val);
-    }
   },
 
   "def": function (opts, id, val) {
@@ -6014,7 +6028,12 @@ builtins = {
       }
     }
 
-    return Terr.Seq(seq);
+    if (seq.length == 1) {
+      return seq[0];
+    } else {
+      return Terr.Seq(seq);
+    }
+
   },
 
   // Open a new logical scope, but not a new javascript scope, to allow block
@@ -6032,14 +6051,26 @@ builtins = {
     return Terr.Seq(args.map(walker));
   },
 
+  // (for [i 0 len 10] (< i len) (set! i (inc i))
+  //    i)
 
+  "js-for": function (opts, init, test, update) {
+    var walker = opts.walker,
+        env = opts.env;
 
-  // (jsmacro if [opts test cons alt]
-  //   (var walker (opts.walker opts.env))
-  //   (opts.Terr
-  //     (walker test)
-  //     (if cons (walker cons))
-  //     (if alt (walker alt))))
+    env = env.newScope(true, false);
+
+    var walker = walker(env);
+
+    var init = walker(core.list(core.symbol('var')).concat(init));
+    var test = walker(test);
+    var update = walker(update);
+    var body = Terr.Seq(Array.prototype.slice.call(arguments, 4).map(walker));
+
+    return Terr.For(init, test, update, body);
+  },
+
+  // (while (< i 10) (inc i))
 
   "if": function (opts, test, cons, alt) {
     var walker = opts.walker,
@@ -7346,8 +7377,7 @@ var compilers = {
       if (!Terr.INTERACTIVE) {
         if (node.declaration == "var") {
           return compilers.Var.compile(loc(node, {
-            symbol: Terr.Identifier(node.js_name),
-            expression: node.value
+            pairs: [[Terr.Identifier(node.js_name), node.value]]
           }), mode);
         } else {
           return compilers.Assign.compile(loc(node, {
@@ -7387,11 +7417,18 @@ var compilers = {
   },
 
   Var: {
-    fields: ['symbol', 'expression'],
+    fields: ['pairs'],
     compile: function (node, mode) {
-      var symb = Terr.CompileToJS(node.symbol, "expression");
-      var expr = Terr.CompileToJS(node.expression, "expression");
-      var decl = JS.VariableDeclaration([JS.VariableDeclarator(symb, expr)]);
+
+      var symb, expr;
+
+      var mapped = node.pairs.map(function (pair) {
+        symb = Terr.CompileToJS(pair[0], "expression");
+        expr = Terr.CompileToJS(pair[1], "expression");
+        return JS.VariableDeclarator(symb, expr);
+      });
+
+      var decl = JS.VariableDeclaration(mapped);
 
       if (mode == "expression") {
         return expr;
@@ -7557,6 +7594,25 @@ var compilers = {
           return Terr.CompileToJS(a, "expression");
         })
       ), mode);
+    }
+  },
+
+  For: {
+    fields: ['init', 'test', 'update', 'body'],
+    compile: function (node, mode) {
+      if (mode == "expression") {
+        console.log("For not supported in expression position.")
+        throw "For not supported in expression position."
+      }
+
+      var for_statement = JS.ForStatement(
+        intoBlock(node.init, "statement"),
+        Terr.CompileToJS(node.test, "expression"),
+        Terr.CompileToJS(node.update, "expression"),
+        intoBlock(node.body, "statement")
+      )
+
+      return [for_statement];
     }
   }
 }

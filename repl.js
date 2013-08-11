@@ -14,10 +14,18 @@ function compileTerrible(text) {
   });
 
   try {
-    env.evalText(text);
+    env.evalText(text, function (form, source, exc) {
+      messages.push("! " + source.trim());
+      messages.push("! " + (exc.message ? exc.message : exc));
+      if (exc.stack) {
+        messages.push("! " + exc.stack);
+      }
+    });
   } catch (exc) {
     messages.push("! " + (exc.message ? exc.message : exc));
-    messages.push(exc.stack ? ("! " + exc.stack) : "");
+    if (exc.stack) {
+      messages.push("! " + exc.stack);
+    }
   }
 
   return { js: env.asJS(mode), log: messages };
@@ -68,7 +76,7 @@ doCompile();
 
 window.replEnvironment = new Environment("browser", false);
 
-function addResult(form, value) {
+function addResult(form, value, result_class) {
   var el = document.getElementById('evaled-forms');
   var new_el = document.createElement('div');
   new_el.setAttribute('class', 'evaled');
@@ -79,7 +87,7 @@ function addResult(form, value) {
   new_el.appendChild(form_el);
 
   var value_el = document.createElement('pre');
-  value_el.setAttribute('class', 'value');
+  value_el.setAttribute('class', result_class);
   value_el.innerText = value;
   new_el.appendChild(value_el);
 
@@ -92,7 +100,11 @@ function replEval(text) {
   var results = replEnvironment.evalText(text + "\n");
 
   results.forEach(function (result) {
-    addResult(result.text.trim(), result.value);
+    if (result.exception) {
+      addResult(result.text.trim(), result.exception, "value exception");
+    } else {
+      addResult(result.text.trim(), result.value, "value");
+    }
   });
 }
 

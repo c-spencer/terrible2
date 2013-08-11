@@ -52,7 +52,7 @@ Environment.prototype.getNamespace = function (name) {
   }
 };
 
-Environment.prototype.evalText = function (text) {
+Environment.prototype.evalText = function (text, error_cb) {
   var forms = this.readSession.readString(text);
 
   var results = [];
@@ -71,11 +71,15 @@ Environment.prototype.evalText = function (text) {
       this.current_namespace.ast_nodes =
         this.current_namespace.ast_nodes.concat(nodes);
     } catch (exception) {
-      results.push({
-        form: form,
-        text: form.$text,
-        value: exception
-      });
+      if (error_cb) {
+        error_cb(form, form.$text, exception);
+      } else {
+        results.push({
+          form: form,
+          text: form.$text,
+          exception: exception
+        });
+      }
     }
   }
 

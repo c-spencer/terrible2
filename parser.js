@@ -585,6 +585,10 @@ builtins = {
 
   "quote": function (opts, arg) {
     return opts.walker(opts.env.setQuoted("quote"))(arg);
+  },
+
+  "syntax-quote": function (opts, arg) {
+    return opts.walker(opts.env.setQuoted("syntax"))(arg);
   }
 }
 

@@ -6989,16 +6989,25 @@ function replEval(text) {
   });
 }
 
-document.getElementById('repl-submit').addEventListener('click', function () {
+function replSubmit () {
   var el = document.getElementById('repl-input');
   replEval(el.value);
   el.value = replEnvironment.readSession.buffer.remaining().trim();
   replEnvironment.readSession.buffer.truncate();
+}
+
+document.getElementById('repl-submit').addEventListener('click', replSubmit);
+
+document.getElementById('repl-input').addEventListener('keypress', function (e) {
+  if (e.shiftKey && e.which == 13) {
+    e.preventDefault();
+    replSubmit();
+  }
 })
 
-replEval("(+ 1 2)")
-replEval("(defn inc [i] (+ i 1))")
-replEval("(inc 5)")
+replEval("(+ 1 2)");
+replEval("(defn inc [i] (+ i 1))");
+replEval("(inc 5)");
 
 // Toggles
 

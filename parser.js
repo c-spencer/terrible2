@@ -152,6 +152,45 @@ function resolveSymbol (env, parsed_symbol) {
   return scope.resolve(mungeSymbol(parsed_symbol.root));
 }
 
+// Shared declaration checks
+function declaration_guard (env, kind, id) {
+  if (!isSymbol(id)) {
+    throw "First argument to " + kind + " must be symbol."
+  }
+
+  var parsed_id = parseSymbol(id.name);
+
+  if (parsed_id.namespace) {
+    throw "Cannot " + kind + " into another namespace."
+  }
+
+  if (parsed_id.parts.length !== 0) {
+    throw "Can't " + kind + " a multi-part id."
+  }
+
+  var munged_name = mungeSymbol(parsed_id.root);
+
+  if (env.scope.logicalScoped(munged_name)) {
+    throw "Cannot re" + kind + " " + id.name
+  }
+
+  return munged_name;
+}
+
+function declaration_val (val, walker, env, name) {
+  if (val !== undefined) {
+    val = walker(env)(val);
+    if (val === null) {
+      return undefined;
+    } else if (val.type == "Fn") {
+      val.id = Terr.Identifier(name);
+    }
+
+    env.scope.update(name, { node: val });
+  }
+  return val;
+}
+
 builtins = {
 
   '=': makeBinary('==='),
@@ -190,137 +229,64 @@ builtins = {
 
   "var": function (opts, id, val) {
     var walker = opts.walker,
-        env = opts.env;
+        env = opts.env,
+        munged_name = declaration_guard(env, "var", id),
+        ns_name = env.env.current_namespace.name;
 
-    if (!isSymbol(id)) {
-      throw "First argument to var must be symbol."
-    }
-
-    var parsed_id = parseSymbol(id.name);
-
-    if (parsed_id.namespace) {
-      throw "Cannot var into another namespace."
-    }
-
-    if (parsed_id.parts.length === 0) {
-      var munged_name = mungeSymbol(parsed_id.root);
-
-      // If there is already a var with the same name in the JS scope, generate a new
-      // name to avoid overwriting it. The scope always returns from the logical stack
-      // not the js stack, so although this clobbers the old js scope information, the
-      // js stack is only needed for the presence check, not the metadata.
-
-      if (env.scope.logicalScoped(munged_name)) {
-        throw "Cannot redeclare var " + id.name
-      }
-
-      if (env.scope.nameClash(munged_name)) {
-        var js_name = env.genID(munged_name);
-      } else {
-        var js_name = munged_name;
-      }
-
-      var ns_name = env.env.current_namespace.name;
-
-      if (env.scope.top_level) {
-        var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
-      } else {
-        var accessor = Terr.Identifier(js_name);
-      }
-
-      env.scope.addSymbol(munged_name, {
-        type: 'any',
-        accessor: accessor,
-        js_name: js_name,
-        export: false,
-        top_level: env.scope.top_level
-      });
-
-      // TOTHINK: Treat value as a new scope?
-
-      if (val !== undefined) {
-        val = walker(env)(val);
-        if (val === null) {
-          return undefined;
-        } else if (val.type == "Fn") {
-          val.id = Terr.Identifier(munged_name);
-          // return val;
-        }
-
-        env.scope.update(munged_name, { node: val });
-      }
-
-      if (env.scope.top_level) {
-        // interactive set
-        return Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var");
-      } else {
-        return Terr.Var(accessor, val);
-      }
+    if (env.scope.nameClash(munged_name)) {
+      var js_name = env.genID(munged_name);
     } else {
-      throw "Can't var a multi-part id."
-      // var resolved = env.scope.resolve(id.name());
-
-      // walker = walker(env);
-
-      // return Terr.Assign(walker(id), walker(val));
+      var js_name = munged_name;
     }
 
+    if (env.scope.top_level) {
+      var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
+    } else {
+      var accessor = Terr.Identifier(js_name);
+    }
+
+    env.scope.addSymbol(munged_name, {
+      type: 'any',
+      accessor: accessor,
+      js_name: js_name,
+      export: false,
+      top_level: env.scope.top_level
+    });
+
+    val = declaration_val(val, walker, env, munged_name);
+
+    if (env.scope.top_level) {
+      return Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var");
+    } else {
+      return Terr.Var(accessor, val);
+    }
   },
 
   "def": function (opts, id, val) {
     var walker = opts.walker,
-        env = opts.env;
+        env = opts.env,
+        munged_name = declaration_guard(env, "def", id),
+        ns_name = env.env.current_namespace.name;
 
-    if (!isSymbol(id)) {
-      throw "First argument to def must be symbol."
-    }
-
-    var parsed_id = parseSymbol(id.name);
-
-    if (parsed_id.namespace) {
-      throw "Cannot def into another namespace."
-    }
-
-    if (parsed_id.parts.length === 0) {
-      var ns_name = env.env.current_namespace.name;
-      var munged_name = mungeSymbol(parsed_id.root);
-
-      if (env.scope.logicalScoped(munged_name)) {
-        throw "Cannot redef " + id.name
-      }
-
-      if (env.scope.nameClash(munged_name)) {
-        var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + env.genID(munged_name);
-      } else {
-        var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + munged_name;
-      }
-
-      var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
-
-      env.scope.addSymbol(munged_name, {
-        type: 'any',
-        accessor: accessor,
-        js_name: js_name,
-        export: true,
-        top_level: true
-      });
-
-      if (val !== undefined) {
-        val = walker(env)(val);
-        if (val === null) {
-          return undefined;
-        } else if (val.type == "Fn") {
-          val.id = Terr.Identifier(munged_name);
-          // return val;
-        }
-
-        env.scope.update(munged_name, { node: val });
-      }
-
-      return Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var");
+    if (env.scope.nameClash(munged_name)) {
+      var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + env.genID(munged_name);
     } else {
-      throw "Can't def a multi-part id."
+      var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + munged_name;
     }
+
+    var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
+
+    env.scope.addSymbol(munged_name, {
+      type: 'any',
+      accessor: accessor,
+      js_name: js_name,
+      export: true,
+      top_level: true
+    });
+
+    val = declaration_val(val, walker, env, munged_name);
+
+    return Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var");
   },
 
   "lambda": function (opts, args) {
@@ -505,12 +471,12 @@ builtins = {
     return Terr.Seq(seq);
   },
 
+  // Open a new logical scope, but not a new javascript scope, to allow block
+  // insertion to work as expected.
   "do": function (opts) {
     var walker = opts.walker,
         env = opts.env;
 
-    // Open a new logical scope, but not a new javascript scope, to allow block
-    // insertion to work as expected.
     env = env.newScope(true, false);
 
     walker = walker(env);
@@ -519,6 +485,8 @@ builtins = {
 
     return Terr.Seq(args.map(walker));
   },
+
+
 
   // (jsmacro if [opts test cons alt]
   //   (var walker (opts.walker opts.env))

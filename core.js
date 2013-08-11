@@ -15,6 +15,18 @@ function List() {
     return new (Function.prototype.bind.apply(List, [null].concat(values)));
   }
 }
+List.prototype.concat = function (arg) {
+  this.values = this.values.concat(arg);
+  return this;
+}
+List.prototype.push = function () {
+  this.values.push.apply(this.values, arguments);
+  return this;
+}
+List.prototype.toString = function () {
+  var vs = this.values.map(function (v) { return v.toString(); });
+  return "(" + vs.join(" ") + ")";
+}
 exports.list = List;
 
 function Symbol(name) {

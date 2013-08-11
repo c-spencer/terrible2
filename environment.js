@@ -4,6 +4,10 @@ var codegen = require('escodegen');
 var JS = require('./js');
 var reader = require('./reader');
 var parser = require('./parser');
+var core = require('./core');
+var fs = require('fs');
+
+var terrible_core = fs.readFileSync("./src/terrible/core.terrible");
 
 function Environment (target, interactive) {
 
@@ -28,7 +32,15 @@ function Environment (target, interactive) {
   this.scope.expose('JSON', JSON);
   this.scope.expose('console', console);
 
+  this.scope.expose('List', core.list);
+  this.scope.expose('Symbol', core.symbol);
+  this.scope.expose('Keyword', core.keyword);
+
   this.namespaces = [];
+
+  this.current_namespace = this.getNamespace('terrible.core');
+
+  this.evalText(terrible_core);
 
   this.current_namespace = this.getNamespace('user');
 };

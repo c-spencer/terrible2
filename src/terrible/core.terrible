@@ -1,0 +1,19 @@
+(ns terrible.core)
+
+(defn list [& args]
+  (List.apply nil args))
+
+(defn list? [l]
+  (instance? l List))
+
+(defn symbol [name]
+  (Symbol name))
+
+(defn symbol? [s]
+  (instance? s Symbol))
+
+(defn keyword [name]
+  (Keyword name))
+
+(defn keyword? [k]
+  (instance? k Keyword))

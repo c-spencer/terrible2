@@ -449,6 +449,18 @@ builtins = {
     return Terr.Seq([]);
   },
 
+  "refer": function (opts, symbol) {
+    var ns = opts.env.env.findNamespace(symbol.name);
+    if (!ns) {
+      throw "Couldn't resolve namespace `" + symbol.name + "`";
+    }
+
+    opts.env.scope.refer(symbol.name, null,
+                         opts.env.env.findNamespace(symbol.name));
+
+    return Terr.Seq([]);
+  },
+
   "set!": function (opts) {
     var walker = opts.walker,
         env = opts.env;

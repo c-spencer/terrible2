@@ -7,6 +7,7 @@ function Scope (parent, js_frame) {
   this.parent = parent;
   this.logical_frame = {};
   this.js_frame = js_frame || {};
+  this.ns_references = [];
 }
 
 Scope.prototype.addSymbol = function (name, metadata) {
@@ -26,6 +27,17 @@ Scope.prototype.resolve = function (name) {
   if (this.logical_frame[name]) {
     return this.logical_frame[name];
   } else {
+    for (var i = 0; i < this.ns_references.length; ++i) {
+      var ref = this.ns_references[i];
+
+      if (ref.alias === null) {
+        var ns_resolved = ref.ns.scope.resolve(name);
+        if (ns_resolved) {
+          return ns_resolved;
+        }
+      }
+    }
+
     return this.parent ? this.parent.resolve(name) : false;
   }
 }
@@ -91,26 +103,13 @@ Scope.prototype.expose = function (name, value) {
   };
 };
 
-Scope.prototype.refer = function (root, map) {
-
-  var root_name = "refer$" + root.join("$");
-  var root = Terr.Identifier(root_name);
-
-  for (var k in map) {
-    this.logical_frame[k] = {
-      type: 'any',
-      export: false,
-      accessor: Terr.Member(root, Terr.Literal(k)),
-      value: map[k],
-      namespace: root
-    }
+Scope.prototype.refer = function (namespace, alias, ns) {
+  for (var i = 0; i < this.ns_references.length; ++i) {
+    var ref = this.ns_references[i];
+    if (ref.namespace == namespace && ref.alias == alias) return;
   }
 
-  this.logical_frame[root_name] = this.js_frame[root_name] = {
-    type: 'any',
-    accessor: root,
-    value: map
-  };
+  this.ns_references.push({namespace: namespace, alias: alias, ns: ns});
 };
 
 Scope.prototype.exports = function () {
@@ -128,8 +127,6 @@ function Namespace (name, scope) {
   this.name = name;
   this.scope = scope;
   this.scope.top_level = true;
-
-  this.scope.refer(['terrible', 'core'], require('./core'));
 
   this.ast_nodes = [];
   this.dependent_namespaces = [];

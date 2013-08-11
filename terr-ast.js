@@ -4,6 +4,19 @@ var Terr = exports;
 
 Terr.INTERACTIVE = false;
 
+function intoBlock (node, mode) {
+  if (node !== undefined) {
+    var r = Terr.CompileToJS(node, mode);
+    if (r.length == 1) {
+      return r[0];
+    } else {
+      return JS.Block(r);
+    }
+  } else {
+    return undefined;
+  }
+}
+
 var compilers = {
   Fn: {
     fields: ['bodies', 'arities', 'variadic'],
@@ -227,12 +240,12 @@ var compilers = {
 
       if (mode == "expression") {
         return JS.ConditionalExpression(test,
-          node.cons ? JS.Block(Terr.CompileToJS(node.cons, "expression")) : undefined,
-          node.alt ? JS.Block(Terr.CompileToJS(node.alt, "expression")) : undefined)
+          node.cons ? Terr.CompileToJS(node.cons, "expression") : undefined,
+          node.alt ? Terr.CompileToJS(node.alt, "expression") : JS.Identifier("undefined"))
       } else if (mode == "statement" || mode == "return") {
         return [JS.IfStatement(test,
-                  node.cons ? JS.Block(Terr.CompileToJS(node.cons, mode)) : undefined,
-                  node.alt ? JS.Block(Terr.CompileToJS(node.alt, mode)) : undefined)]
+                  intoBlock(node.cons, mode),
+                  intoBlock(node.alt, mode))]
       }
     }
   },

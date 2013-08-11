@@ -8,7 +8,7 @@ var parser = require('./parser');
 var core = require('./core');
 var fs = require('fs');
 
-var terrible_core = "(ns terrible.core)\n\n(def list (lambda [& args]\n  (List.apply nil args)))\n\n(def symbol (lambda [name]\n  (Symbol name)))\n\n(var set-macro\n  (lambda [f]\n    (set! f.$macro true)\n    f))\n\n(def macro (set-macro\n  (lambda [& body]\n    `(set-macro (lambda ~@body)))))\n\n(def defmacro\n  (macro [name & body]\n    `(def ~name (macro ~@body))))\n\n(defmacro fn [& body]\n  `(lambda ~@body))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n";
+var terrible_core = "(ns terrible.core)\n\n(def list (lambda [& args]\n  (List.apply nil args)))\n\n(def symbol (lambda [name]\n  (Symbol name)))\n\n(var set-macro\n  (lambda [f]\n    (set! f.$macro true)\n    f))\n\n(def macro (set-macro\n  (lambda [& body]\n    `(set-macro (lambda ~@body)))))\n\n(def defmacro\n  (macro [name & body]\n    `(def ~name (macro ~@body))))\n\n(defmacro fn [& body]\n  `(lambda ~@body))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n\n(defmacro cond [& cases]\n  (if (and (keyword? cases.0)\n           (= cases.0.name \"else\"))\n    cases.1\n    (if cases.2\n      `(if ~cases.0 ~cases.1 (cond ~@(cases.slice 2)))\n      `(if ~cases.0 ~cases.1))))\n";
 
 function Environment (target, interactive) {
 
@@ -6075,8 +6075,8 @@ builtins = {
 
     walker = walker(env);
 
-    return Terr.If(walker(test), cons ? walker(cons) : undefined,
-                                 alt ? walker(alt) : undefined);
+    return Terr.If(walker(test), cons !== undefined ? walker(cons) : undefined,
+                                 alt !== undefined ? walker(alt) : undefined);
   },
 
   ".": function (opts, target, member) {
@@ -6185,7 +6185,7 @@ function compile_eval (node, env) {
   var js = codegen.generate(JS.Program(compile_nodes));
 
   // console.log("<--Compile Eval-->")
-  // console.log(js);
+  console.log(js);
   // console.log("<--Run Compile Eval-->");
   var ret = new Function('$ENV', js)(ENV);
   // console.log("<--End Compile Eval-->")
@@ -7202,6 +7202,20 @@ var Terr = exports;
 
 Terr.INTERACTIVE = false;
 
+function intoBlock (node, mode) {
+  if (node !== undefined) {
+    var r = Terr.CompileToJS(node, mode);
+    if (r.length == 1) {
+      console.log("intoBlock bare", r);
+      return r[0];
+    } else {
+      return JS.Block(r);
+    }
+  } else {
+    return undefined;
+  }
+}
+
 var compilers = {
   Fn: {
     fields: ['bodies', 'arities', 'variadic'],
@@ -7423,14 +7437,16 @@ var compilers = {
     compile: function (node, mode) {
       var test = Terr.CompileToJS(node.test, "expression");
 
+      console.log("If", node);
+
       if (mode == "expression") {
         return JS.ConditionalExpression(test,
-          node.cons ? JS.Block(Terr.CompileToJS(node.cons, "expression")) : undefined,
-          node.alt ? JS.Block(Terr.CompileToJS(node.alt, "expression")) : undefined)
+          node.cons ? Terr.CompileToJS(node.cons, "expression") : undefined,
+          node.alt ? Terr.CompileToJS(node.alt, "expression") : JS.Identifier("undefined"))
       } else if (mode == "statement" || mode == "return") {
         return [JS.IfStatement(test,
-                  node.cons ? JS.Block(Terr.CompileToJS(node.cons, mode)) : undefined,
-                  node.alt ? JS.Block(Terr.CompileToJS(node.alt, mode)) : undefined)]
+                  intoBlock(node.cons, mode),
+                  intoBlock(node.alt, mode))]
       }
     }
   },

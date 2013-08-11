@@ -530,8 +530,8 @@ builtins = {
 
     walker = walker(env);
 
-    return Terr.If(walker(test), cons ? walker(cons) : undefined,
-                                 alt ? walker(alt) : undefined);
+    return Terr.If(walker(test), cons !== undefined ? walker(cons) : undefined,
+                                 alt !== undefined ? walker(alt) : undefined);
   },
 
   ".": function (opts, target, member) {

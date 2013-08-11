@@ -42,3 +42,11 @@
 
 (defn keyword? [k]
   (instance? k Keyword))
+
+(defmacro cond [& cases]
+  (if (and (keyword? cases.0)
+           (= cases.0.name "else"))
+    cases.1
+    (if cases.2
+      `(if ~cases.0 ~cases.1 (cond ~@(cases.slice 2)))
+      `(if ~cases.0 ~cases.1))))

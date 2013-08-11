@@ -132,10 +132,17 @@ function parseSymbol (symb) {
 
 function resolveSymbol (env, parsed_symbol) {
   if (parsed_symbol.namespace) {
-    var ns = env.env.findNamespace(parsed_symbol.namespace);
+
+    var ns = env.scope.resolveNamespace(parsed_symbol.namespace) ||
+             env.env.findNamespace(parsed_symbol.namespace);
+
     if (!ns) {
       throw "Couldn't find namespace `" + parsed_symbol.namespace + "`"
     }
+
+    // If aliased, updated the parsed namespace.
+    parsed_symbol.namespace = ns.name;
+
     env.env.current_namespace.requiresNamespace(ns);
     var scope = ns.scope;
   } else {
@@ -449,13 +456,15 @@ builtins = {
     return Terr.Seq([]);
   },
 
-  "refer": function (opts, symbol) {
+  "refer": function (opts, symbol, alias) {
     var ns = opts.env.env.findNamespace(symbol.name);
     if (!ns) {
       throw "Couldn't resolve namespace `" + symbol.name + "`";
     }
 
-    opts.env.scope.refer(symbol.name, null,
+    var alias = alias ? alias.name : null;
+
+    opts.env.scope.refer(symbol.name, alias,
                          opts.env.env.findNamespace(symbol.name));
 
     return Terr.Seq([]);

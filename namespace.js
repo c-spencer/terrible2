@@ -42,6 +42,18 @@ Scope.prototype.resolve = function (name) {
   }
 }
 
+Scope.prototype.resolveNamespace = function (alias) {
+  for (var i = 0; i < this.ns_references.length; ++i) {
+    var ref = this.ns_references[i];
+
+    if (ref.alias === alias) {
+      return ref.ns;
+    }
+  }
+
+  return this.parent? this.parent.resolveNamespace(alias) : false;
+}
+
 Scope.prototype.nameClash = function (name) {
   var keys = Object.keys(this.js_frame);
   for (var i = 0; i < keys.length; ++i) {

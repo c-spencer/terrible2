@@ -122,7 +122,18 @@ Environment.prototype.asJS = function (mode) {
   Terr.INTERACTIVE = this.interactive;
   var js_ast = Terr.CompileToJS(seq, "statement");
 
-  return codegen.generate(JS.Program(js_ast));
+  if (false) { // source map experimenting
+    var result = codegen.generate(JS.Program(js_ast), {
+      sourceMap: "input",
+      sourceMapWithCode: true
+    });
+
+    console.log("map", result.map.toString());
+
+    return result.code;
+  } else {
+    return codegen.generate(JS.Program(js_ast));
+  }
 }
 
 exports.Environment = Environment;
@@ -6131,16 +6142,26 @@ var macros = {
   }
 }
 
+function loc (node, form) {
+  if (node.loc) { form.loc = node.loc; }
+  return form;
+}
+
 walk_handlers = {
   "List": function (node, walker, env) {
+
+    // easier bound version
+    var _loc = function (form) {
+      return loc(node, form);
+    }
 
     if (env.quoted) {
       var quoted_walker = walker(env);
       var unquoted_walker = walker(env.setQuoted(false));
-      return Terr.Call(
+      return _loc(Terr.Call(
         unquoted_walker(core.symbol('list')),
         node.values.map(quoted_walker)
-      )
+      ));
     }
 
     var head = node.values[0];
@@ -6159,24 +6180,23 @@ walk_handlers = {
           target = Terr.Member(target, walker(p));
         });
 
-        return Terr.Call(target, tail);
+        return _loc(Terr.Call(target, tail));
       }
 
       if (parsed_head.parts.length > 0) {
         walker = walker(env);
-        var ret = Terr.Call(walker(head), tail.map(walker))
-        return ret;
+        return _loc(Terr.Call(walker(head), tail.map(walker)));
       }
 
       var name = parsed_head.root;
 
       if (builtins[name]) {
-        return builtins[name].apply(null, [{
+        return _loc(builtins[name].apply(null, [{
           walker: walker,
           env: env
-        }].concat(tail));
+        }].concat(tail)));
       } else if (macros[name]) {
-        return walker(env)(macros[name].apply(null, tail));
+        return _loc(walker(env)(macros[name].apply(null, tail)));
       }
 
       var resolved = resolveSymbol(env, parsed_head);
@@ -6222,7 +6242,8 @@ walk_handlers = {
         throw "Cannot call " + resolved.type + " `" + name + "` as function."
       }
 
-      return Terr.Call(target || walker(head), tail.map(walker));
+      return _loc(Terr.Call(loc(head, target || walker(head)),
+                            tail.map(walker)));
     } else {
       throw "Cannot call `" + JSON.stringify(head) + "` as function."
     }
@@ -6232,10 +6253,10 @@ walk_handlers = {
 
     if (env.quoted) {
       walker = walker(env.setQuoted(false));
-      return Terr.Call(
+      return loc(node, Terr.Call(
         walker(core.symbol('symbol')),
         [node.name]
-      )
+      ));
     }
 
     var parsed_node = parseSymbol(node.name);
@@ -6262,7 +6283,7 @@ walk_handlers = {
       root = Terr.Member(root, walker(parsed_node.parts[i]));
     }
 
-    return root;
+    return loc(node, root);
   },
 
   "Keyword": function (node, walker, env) {
@@ -6412,6 +6433,19 @@ Buffer.prototype.truncate = function () {
 
 Buffer.prototype.remaining = function () {
   return this.string.substring(this.pos);
+}
+
+Buffer.prototype.locationFromState = function (start_state) {
+  return {
+    start: {
+      line: start_state.line,
+      column: start_state.col
+    },
+    end: {
+      line: this.line,
+      column: this.col
+    }
+  }
 }
 
 // Reader
@@ -6693,11 +6727,24 @@ Reader.prototype.isTerminatingMacro = function (ch) {
   return this.macros[ch] && ch != '#' && ch != '\'' && ch != '%'
 }
 
+function annotateLocation (form, buffer, start_state) {
+  if (form !== null && typeof form === "object") {
+    form.loc = buffer.locationFromState(start_state);
+  }
+  return form;
+}
+
 Reader.prototype.read = function (buffer) {
   while (true) {
     var ch, macro;
 
-    while (this.isWhitespace(ch = buffer.read1()));
+    var start_state = buffer.save();
+    var ch = buffer.read1();
+
+    while (this.isWhitespace(ch)) {
+      start_state = buffer.save();
+      ch = buffer.read1();
+    }
 
     if (this.isDigit(ch)) {
       return this.readNumber(buffer, ch);
@@ -6708,7 +6755,7 @@ Reader.prototype.read = function (buffer) {
       if (ret == buffer) {
         continue;
       } else {
-        return ret;
+        return annotateLocation(ret, buffer, start_state);
       }
     }
 
@@ -6717,13 +6764,13 @@ Reader.prototype.read = function (buffer) {
       var ch2 = buffer.read1();
       if (this.isDigit(ch2)) {
         var n = this.readNumber(buffer, ch2);
-        return core.list(core.symbol(ch), n);
+        return annotateLocation(core.list(core.symbol(ch), n), buffer, start_state);
       } else {
         buffer.restore(buffer_state);
       }
     }
 
-    return this.readToken(buffer, ch);
+    return annotateLocation(this.readToken(buffer, ch), buffer, start_state);
   }
 }
 
@@ -7005,9 +7052,9 @@ document.getElementById('repl-input').addEventListener('keypress', function (e) 
   }
 })
 
-replEval("(+ 1 2)");
-replEval("(defn inc [i] (+ i 1))");
-replEval("(inc 5)");
+// replEval("(+ 1 2)");
+// replEval("(defn inc [i] (+ i 1))");
+// replEval("(inc 5)");
 
 // Toggles
 
@@ -7159,7 +7206,7 @@ var compilers = {
   Identifier: {
     fields: ['name'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.Identifier(node.name), mode);
+      return ExpressionToMode(loc(node, JS.Identifier(node.name)), mode);
     }
   },
 
@@ -7167,7 +7214,8 @@ var compilers = {
     fields: ['namespace', 'name', 'js_name'],
     compile: function (node, mode) {
       if (!Terr.INTERACTIVE) {
-        return compilers.Identifier.compile({name: node.js_name}, mode);
+        return compilers.Identifier.compile(
+          loc(node, {name: node.js_name}), mode);
       }
 
       return Terr.CompileToJS(Terr.Call(
@@ -7183,15 +7231,15 @@ var compilers = {
     compile: function (node, mode) {
       if (!Terr.INTERACTIVE) {
         if (node.declaration == "var") {
-          return compilers.Var.compile({
+          return compilers.Var.compile(loc(node, {
             symbol: Terr.Identifier(node.js_name),
             expression: node.value
-          }, mode);
+          }), mode);
         } else {
-          return compilers.Assign.compile({
+          return compilers.Assign.compile(loc(node, {
             left: Terr.Identifier(node.js_name),
             right: node.value
-          }, mode);
+          }), mode);
         }
       }
 
@@ -7323,55 +7371,55 @@ var compilers = {
   Assign: {
     fields: ['left', 'right'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.AssignmentExpression(
+      return ExpressionToMode(loc(node, JS.AssignmentExpression(
         Terr.CompileToJS(node.left, "expression"),
         "=",
         Terr.CompileToJS(node.right, "expression")
-      ), mode);
+      )), mode);
     }
   },
 
   Binary: {
     fields: ['left', 'op', 'right'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.BinaryExpression(
+      return ExpressionToMode(loc(node, JS.BinaryExpression(
         Terr.CompileToJS(node.left, "expression"),
         node.op,
         Terr.CompileToJS(node.right, "expression")
-      ), mode);
+      )), mode);
     }
   },
 
   Unary: {
     fields: ['op', 'expr'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.UnaryExpression(
+      return ExpressionToMode(loc(node, JS.UnaryExpression(
         node.op,
         Terr.CompileToJS(node.expr, "expression")
-      ), mode);
+      )), mode);
     }
   },
 
   Call: {
     fields: ['target', 'args'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.CallExpression(
+      return ExpressionToMode(loc(node, JS.CallExpression(
         Terr.CompileToJS(node.target, "expression"),
         node.args.map(function (a) {
           return Terr.CompileToJS(a, "expression");
         })
-      ), mode)
+      )), mode);
     }
   },
 
   Arr: {
     fields: ['values'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.ArrayExpression(
+      return ExpressionToMode(loc(node, JS.ArrayExpression(
         node.values.map(function (a) {
           return Terr.CompileToJS(a, "expression");
         })
-      ), mode);
+      )), mode);
     }
   },
 
@@ -7381,7 +7429,8 @@ var compilers = {
       if (mode == "expression") {
         throw "Return in expression position? Is this real?"
       }
-      return [JS.Return(Terr.CompileToJS(node.expression, "expression"))];
+      return [loc(node,
+                  JS.Return(Terr.CompileToJS(node.expression, "expression")))];
     }
   },
 
@@ -7396,6 +7445,13 @@ var compilers = {
       ), mode);
     }
   }
+}
+
+function loc (node, js) {
+  if (node.loc) {
+    js.loc = node.loc;
+  }
+  return js;
 }
 
 function ExpressionToMode (node, mode) {

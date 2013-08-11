@@ -112,9 +112,9 @@ document.getElementById('repl-input').addEventListener('keypress', function (e) 
   }
 })
 
-replEval("(+ 1 2)");
-replEval("(defn inc [i] (+ i 1))");
-replEval("(inc 5)");
+// replEval("(+ 1 2)");
+// replEval("(defn inc [i] (+ i 1))");
+// replEval("(inc 5)");
 
 // Toggles
 

@@ -639,16 +639,26 @@ var macros = {
   }
 }
 
+function loc (node, form) {
+  if (node.loc) { form.loc = node.loc; }
+  return form;
+}
+
 walk_handlers = {
   "List": function (node, walker, env) {
+
+    // easier bound version
+    var _loc = function (form) {
+      return loc(node, form);
+    }
 
     if (env.quoted) {
       var quoted_walker = walker(env);
       var unquoted_walker = walker(env.setQuoted(false));
-      return Terr.Call(
+      return _loc(Terr.Call(
         unquoted_walker(core.symbol('list')),
         node.values.map(quoted_walker)
-      )
+      ));
     }
 
     var head = node.values[0];
@@ -667,24 +677,23 @@ walk_handlers = {
           target = Terr.Member(target, walker(p));
         });
 
-        return Terr.Call(target, tail);
+        return _loc(Terr.Call(target, tail));
       }
 
       if (parsed_head.parts.length > 0) {
         walker = walker(env);
-        var ret = Terr.Call(walker(head), tail.map(walker))
-        return ret;
+        return _loc(Terr.Call(walker(head), tail.map(walker)));
       }
 
       var name = parsed_head.root;
 
       if (builtins[name]) {
-        return builtins[name].apply(null, [{
+        return _loc(builtins[name].apply(null, [{
           walker: walker,
           env: env
-        }].concat(tail));
+        }].concat(tail)));
       } else if (macros[name]) {
-        return walker(env)(macros[name].apply(null, tail));
+        return _loc(walker(env)(macros[name].apply(null, tail)));
       }
 
       var resolved = resolveSymbol(env, parsed_head);
@@ -730,7 +739,8 @@ walk_handlers = {
         throw "Cannot call " + resolved.type + " `" + name + "` as function."
       }
 
-      return Terr.Call(target || walker(head), tail.map(walker));
+      return _loc(Terr.Call(loc(head, target || walker(head)),
+                            tail.map(walker)));
     } else {
       throw "Cannot call `" + JSON.stringify(head) + "` as function."
     }
@@ -740,10 +750,10 @@ walk_handlers = {
 
     if (env.quoted) {
       walker = walker(env.setQuoted(false));
-      return Terr.Call(
+      return loc(node, Terr.Call(
         walker(core.symbol('symbol')),
         [node.name]
-      )
+      ));
     }
 
     var parsed_node = parseSymbol(node.name);
@@ -770,7 +780,7 @@ walk_handlers = {
       root = Terr.Member(root, walker(parsed_node.parts[i]));
     }
 
-    return root;
+    return loc(node, root);
   },
 
   "Keyword": function (node, walker, env) {

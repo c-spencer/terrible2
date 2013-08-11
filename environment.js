@@ -121,7 +121,18 @@ Environment.prototype.asJS = function (mode) {
   Terr.INTERACTIVE = this.interactive;
   var js_ast = Terr.CompileToJS(seq, "statement");
 
-  return codegen.generate(JS.Program(js_ast));
+  if (false) { // source map experimenting
+    var result = codegen.generate(JS.Program(js_ast), {
+      sourceMap: "input",
+      sourceMapWithCode: true
+    });
+
+    console.log("map", result.map.toString());
+
+    return result.code;
+  } else {
+    return codegen.generate(JS.Program(js_ast));
+  }
 }
 
 exports.Environment = Environment;

@@ -72,6 +72,19 @@ Buffer.prototype.remaining = function () {
   return this.string.substring(this.pos);
 }
 
+Buffer.prototype.locationFromState = function (start_state) {
+  return {
+    start: {
+      line: start_state.line,
+      column: start_state.col
+    },
+    end: {
+      line: this.line,
+      column: this.col
+    }
+  }
+}
+
 // Reader
 
 var symbolPattern = /^([:][^\d\s]|[^:\d\s])[^\n\t\r\s,]*$/
@@ -351,11 +364,24 @@ Reader.prototype.isTerminatingMacro = function (ch) {
   return this.macros[ch] && ch != '#' && ch != '\'' && ch != '%'
 }
 
+function annotateLocation (form, buffer, start_state) {
+  if (form !== null && typeof form === "object") {
+    form.loc = buffer.locationFromState(start_state);
+  }
+  return form;
+}
+
 Reader.prototype.read = function (buffer) {
   while (true) {
     var ch, macro;
 
-    while (this.isWhitespace(ch = buffer.read1()));
+    var start_state = buffer.save();
+    var ch = buffer.read1();
+
+    while (this.isWhitespace(ch)) {
+      start_state = buffer.save();
+      ch = buffer.read1();
+    }
 
     if (this.isDigit(ch)) {
       return this.readNumber(buffer, ch);
@@ -366,7 +392,7 @@ Reader.prototype.read = function (buffer) {
       if (ret == buffer) {
         continue;
       } else {
-        return ret;
+        return annotateLocation(ret, buffer, start_state);
       }
     }
 
@@ -375,13 +401,13 @@ Reader.prototype.read = function (buffer) {
       var ch2 = buffer.read1();
       if (this.isDigit(ch2)) {
         var n = this.readNumber(buffer, ch2);
-        return core.list(core.symbol(ch), n);
+        return annotateLocation(core.list(core.symbol(ch), n), buffer, start_state);
       } else {
         buffer.restore(buffer_state);
       }
     }
 
-    return this.readToken(buffer, ch);
+    return annotateLocation(this.readToken(buffer, ch), buffer, start_state);
   }
 }
 

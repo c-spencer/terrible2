@@ -137,7 +137,7 @@ var compilers = {
   Identifier: {
     fields: ['name'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.Identifier(node.name), mode);
+      return ExpressionToMode(loc(node, JS.Identifier(node.name)), mode);
     }
   },
 
@@ -145,7 +145,8 @@ var compilers = {
     fields: ['namespace', 'name', 'js_name'],
     compile: function (node, mode) {
       if (!Terr.INTERACTIVE) {
-        return compilers.Identifier.compile({name: node.js_name}, mode);
+        return compilers.Identifier.compile(
+          loc(node, {name: node.js_name}), mode);
       }
 
       return Terr.CompileToJS(Terr.Call(
@@ -161,15 +162,15 @@ var compilers = {
     compile: function (node, mode) {
       if (!Terr.INTERACTIVE) {
         if (node.declaration == "var") {
-          return compilers.Var.compile({
+          return compilers.Var.compile(loc(node, {
             symbol: Terr.Identifier(node.js_name),
             expression: node.value
-          }, mode);
+          }), mode);
         } else {
-          return compilers.Assign.compile({
+          return compilers.Assign.compile(loc(node, {
             left: Terr.Identifier(node.js_name),
             right: node.value
-          }, mode);
+          }), mode);
         }
       }
 
@@ -301,55 +302,55 @@ var compilers = {
   Assign: {
     fields: ['left', 'right'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.AssignmentExpression(
+      return ExpressionToMode(loc(node, JS.AssignmentExpression(
         Terr.CompileToJS(node.left, "expression"),
         "=",
         Terr.CompileToJS(node.right, "expression")
-      ), mode);
+      )), mode);
     }
   },
 
   Binary: {
     fields: ['left', 'op', 'right'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.BinaryExpression(
+      return ExpressionToMode(loc(node, JS.BinaryExpression(
         Terr.CompileToJS(node.left, "expression"),
         node.op,
         Terr.CompileToJS(node.right, "expression")
-      ), mode);
+      )), mode);
     }
   },
 
   Unary: {
     fields: ['op', 'expr'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.UnaryExpression(
+      return ExpressionToMode(loc(node, JS.UnaryExpression(
         node.op,
         Terr.CompileToJS(node.expr, "expression")
-      ), mode);
+      )), mode);
     }
   },
 
   Call: {
     fields: ['target', 'args'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.CallExpression(
+      return ExpressionToMode(loc(node, JS.CallExpression(
         Terr.CompileToJS(node.target, "expression"),
         node.args.map(function (a) {
           return Terr.CompileToJS(a, "expression");
         })
-      ), mode)
+      )), mode);
     }
   },
 
   Arr: {
     fields: ['values'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.ArrayExpression(
+      return ExpressionToMode(loc(node, JS.ArrayExpression(
         node.values.map(function (a) {
           return Terr.CompileToJS(a, "expression");
         })
-      ), mode);
+      )), mode);
     }
   },
 
@@ -359,7 +360,8 @@ var compilers = {
       if (mode == "expression") {
         throw "Return in expression position? Is this real?"
       }
-      return [JS.Return(Terr.CompileToJS(node.expression, "expression"))];
+      return [loc(node,
+                  JS.Return(Terr.CompileToJS(node.expression, "expression")))];
     }
   },
 
@@ -374,6 +376,13 @@ var compilers = {
       ), mode);
     }
   }
+}
+
+function loc (node, js) {
+  if (node.loc) {
+    js.loc = node.loc;
+  }
+  return js;
 }
 
 function ExpressionToMode (node, mode) {

@@ -23,7 +23,7 @@
       }
       .input {
         position: absolute;
-        top: 0;
+        top: 40px;
         width: 50%;
       }
       .input.left {
@@ -38,6 +38,7 @@
         background: #444;
         right: 0;
         width: 50%;
+        color: #f0f0f0;
       }
       body {
         margin: 0;
@@ -52,10 +53,84 @@
         right: 0;
         background: #eee;
       }
+
+      .repl .input-output {
+        display: none;
+      }
+      .input-output .repl {
+        display: none;
+      }
+
+      #evaled-forms {
+        top: 40px;
+        left: 0;
+        right: 0;
+        bottom: 150px;
+        overflow: scroll;
+        padding: 0;
+      }
+      .form {
+        background: #ddd;
+        margin: 0;
+        padding: 10px;
+      }
+      .value {
+        background: #fff;
+        margin: 0;
+        padding: 10px;
+      }
+      .repl-bottom {
+        height: 150px;
+        bottom: 0;
+      }
+      .repl-input {
+        left: 0;
+        right: 100px;
+        background: #eee;
+      }
+      .repl-submit {
+        right: 0;
+        width: 100px;
+      }
+      .top-bar {
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 40px;
+        background: #cfc;
+      }
+      .top-bar > * {
+        float: left;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0;
+        line-height: 1;
+        margin-right: 30px;
+      }
+      .top-bar button {
+        margin: -10px 0;
+        height: 40px;
+        outline: none;
+      }
+      .repl #repl-toggle {
+        border: 0;
+      }
+      .input-output #io-toggle {
+        border: 0;
+      }
     </style>
   </head>
-  <body>
-    <textarea class="panel input left" id="terrible-input">
+  <body class="input-output">
+    <div class="top-bar panel">
+      <h1>Terrible
+          <a href="https://github.com/c-spencer/terrible2">GitHub</a>
+      </h1>
+      <button id="repl-toggle">Repl</button>
+      <button id="io-toggle">Input/Output</button>
+    </div>
+    <div class="input-output">
+      <textarea class="panel input left" id="terrible-input">
 ; Variable declaration
 (var a 1)
 
@@ -100,18 +175,30 @@
 ; But only when it needs to be
 (try (+ 1 2) (catch [exc] (console.log "oh dear")))
 </textarea>
-    <textarea class="panel input right" id="terrible-output"></textarea>
-    <div class="panel compiler-options">
-      <select id="environment-target">
-        <option value="browser" selected>browser</option>
-        <option value="node">node.js</option>
-      </select>
-      <select id="environment-mode">
-        <option value="library" selected>library</option>
-        <option value="standalone">standalone</option>
-      </select>
+      <textarea class="panel input right" id="terrible-output"></textarea>
+      <div class="panel compiler-options">
+        <select id="environment-target">
+          <option value="browser" selected>browser</option>
+          <option value="node">node.js</option>
+        </select>
+        <select id="environment-mode">
+          <option value="library" selected>library</option>
+          <option value="standalone">standalone</option>
+        </select>
+        <label>
+          <input type="checkbox" id="environment-interactive">
+          Show Interactive (DEBUG)
+        </label>
+      </div>
+      <textarea class="panel output" id="terrible-log"></textarea>
     </div>
-    <textarea class="panel output" id="terrible-log"></textarea>
+    <div class="repl">
+      <div class="panel" id="evaled-forms"></div>
+      <textarea class="panel repl-input repl-bottom" id="repl-input"></textarea>
+      <button class="panel repl-submit repl-bottom" id="repl-submit">
+        eval<br>(shift+enter)
+      </button>
+    </div>
     <script src="./repl-browser.js"></script>
   </body>
 </html>

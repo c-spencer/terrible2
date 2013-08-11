@@ -413,6 +413,18 @@ var compilers = {
 
       return [for_statement];
     }
+  },
+
+  Throw: {
+    fields: ['expression'],
+    compile: function (node, mode) {
+      var statement = JS.ThrowStatement(Terr.CompileToJS(node.expression, "expression"));
+      if (mode == "expression") {
+        return JS.CallExpression(JS.FunctionExpression([], [statement]), []);
+      } else {
+        return [statement];
+      }
+    }
   }
 }
 

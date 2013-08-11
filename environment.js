@@ -59,6 +59,9 @@ Environment.prototype.getNamespace = function (name) {
     return ns;
   } else {
     var ns = new Namespace.Namespace(name, this.scope.newScope(true, false));
+    if (name != "terrible.core") {
+      ns.scope.refer("terrible.core", null, this.findNamespace("terrible.core"))
+    }
     this.namespaces.push(ns);
     return ns;
   }

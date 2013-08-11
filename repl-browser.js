@@ -56,14 +56,37 @@ Environment.prototype.getNamespace = function (name) {
 Environment.prototype.evalText = function (text) {
   var forms = this.readSession.readString(text);
 
+  var results = [];
+
   for (var i = 0, len = forms.length; i < forms.length; ++i) {
     var form = forms[i];
-    var nodes = parser.process(form, this, false);
+    try {
+      var processed = parser.process(form, this, false);
+      processed.form = form;
+      processed.text = form.$text;
 
-    this.current_namespace.ast_nodes = this.current_namespace.ast_nodes.concat(
-      nodes
-    );
+      var nodes = processed.ast;
+
+      results.push(processed);
+
+      this.current_namespace.ast_nodes =
+        this.current_namespace.ast_nodes.concat(nodes);
+    } catch (exception) {
+      results.push({
+        form: form,
+        text: form.$text,
+        value: exception
+      });
+    }
   }
+
+  if (forms.$exception) {
+    var text = this.readSession.buffer.remaining().trim();
+    this.readSession.buffer.truncate();
+    results.push({ text: text, value: forms.$exception });
+  }
+
+  return results;
 };
 
 Environment.prototype.asJS = function (mode) {
@@ -6068,10 +6091,10 @@ function compile_eval (node, env) {
   Terr.INTERACTIVE = true;
   var compile_nodes = Terr.CompileToJS(node, "return");
 
-  var js = codegen.generate(JS.Block(compile_nodes));
+  var js = codegen.generate(JS.Program(compile_nodes));
 
   // console.log("<--Compile Eval-->")
-  console.log(js);
+  // console.log(js);
   // console.log("<--Run Compile Eval-->");
   var ret = new Function('$ENV', js)(ENV);
   // console.log("<--End Compile Eval-->")
@@ -6310,7 +6333,7 @@ function process_form (form, env, quoted) {
 
   // console.log(require('util').inspect(scope, false, 10));
 
-  return ast;
+  return { ast: ast, value: value };
 }
 
 exports.process = process_form;
@@ -6383,14 +6406,24 @@ Buffer.prototype.append = function (str) {
   this.string += str;
 }
 
+Buffer.prototype.truncate = function () {
+  this.string = this.string.substring(0, this.pos);
+}
+
+Buffer.prototype.remaining = function () {
+  return this.string.substring(this.pos);
+}
+
 // Reader
 
 var symbolPattern = /^([:][^\d\s]|[^:\d\s])[^\n\t\r\s,]*$/
 
 // Reader macros
 
-function unmatchedDelimiter() {
-  throw "UnmatchedDelimiter";
+function unmatchedDelimiter(c) {
+  return function () {
+    throw "UnmatchedDelimiter `" + c + "`";
+  }
 }
 
 function listReader (buffer, openparen) {
@@ -6636,9 +6669,9 @@ Reader.prototype.macros = {
   "[": vectorReader,
   "{": hashReader,
   "(": listReader,
-  "]": unmatchedDelimiter,
-  "}": unmatchedDelimiter,
-  ")": unmatchedDelimiter,
+  "]": unmatchedDelimiter("]"),
+  "}": unmatchedDelimiter("}"),
+  ")": unmatchedDelimiter(")"),
   ";": commentReader,
   "`": syntaxQuoteReader,
   "'": quoteReader,
@@ -6786,12 +6819,17 @@ Reader.prototype.newReadSession = function () {
       reader = this;
 
   return {
+    buffer: buffer,
     readString: function (str) {
       buffer.append(str);
-      var forms = [], buffer_state = buffer.save();
+      var forms = [], buffer_state;
       try {
+        buffer_state = buffer.save();
         while (form = reader.read(buffer)) {
           forms.push(form);
+
+          form.$text = buffer.string.substring(buffer_state.pos, buffer.pos);
+
           buffer_state = buffer.save();
         }
       } catch (exception) {
@@ -6799,7 +6837,9 @@ Reader.prototype.newReadSession = function () {
           buffer.restore(buffer_state);
           return forms;
         } else {
-          throw exception;
+          buffer.restore(buffer_state);
+          forms.$exception = exception;
+          return forms;
         }
       }
       return forms;
@@ -6852,6 +6892,8 @@ exports.printString = print_str;
 })()
 },{"./core":3,"util":26}],21:[function(require,module,exports){
 var Environment = require('./Environment').Environment;
+
+// INPUT OUTPUT
 
 var target = "browser";
 var mode = "library";
@@ -6914,6 +6956,59 @@ document.getElementById('environment-interactive').addEventListener('change',
 );
 
 doCompile();
+
+// REPL
+
+window.replEnvironment = new Environment("browser", false);
+
+function addResult(form, value) {
+  var el = document.getElementById('evaled-forms');
+  var new_el = document.createElement('div');
+  new_el.setAttribute('class', 'evaled');
+
+  var form_el = document.createElement('pre');
+  form_el.setAttribute('class', 'form');
+  form_el.innerText = form;
+  new_el.appendChild(form_el);
+
+  var value_el = document.createElement('pre');
+  value_el.setAttribute('class', 'value');
+  value_el.innerText = value;
+  new_el.appendChild(value_el);
+
+  el.appendChild(new_el);
+
+  el.scrollTop = el.scrollHeight;
+}
+
+function replEval(text) {
+  var results = replEnvironment.evalText(text + "\n");
+
+  results.forEach(function (result) {
+    addResult(result.text.trim(), result.value);
+  });
+}
+
+document.getElementById('repl-submit').addEventListener('click', function () {
+  var el = document.getElementById('repl-input');
+  replEval(el.value);
+  el.value = replEnvironment.readSession.buffer.remaining().trim();
+  replEnvironment.readSession.buffer.truncate();
+})
+
+replEval("(+ 1 2)")
+replEval("(defn inc [i] (+ i 1))")
+replEval("(inc 5)")
+
+// Toggles
+
+document.getElementById('repl-toggle').addEventListener('click', function () {
+  document.querySelector('body').setAttribute('class', 'repl');
+});
+
+document.getElementById('io-toggle').addEventListener('click', function () {
+  document.querySelector('body').setAttribute('class', 'input-output');
+});
 
 },{"./Environment":1}],22:[function(require,module,exports){
 var JS = require('./JS');

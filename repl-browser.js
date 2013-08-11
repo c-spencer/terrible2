@@ -8,7 +8,7 @@ var parser = require('./parser');
 var core = require('./core');
 var fs = require('fs');
 
-var terrible_core = "(ns terrible.core)\n\n(def list (fn [& args]\n  (List.apply nil args)))\n\n(def symbol (fn [name]\n  (Symbol name)))\n\n(var -macro\n  (fn [f]\n    (set! f.$macro true)\n    f))\n\n(def macro (-macro\n  (fn [& body]\n    `(-macro (fn ~@body)))))\n\n(def defmacro\n  (macro [name & body]\n    `(def ~name (macro ~@body))))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n";
+var terrible_core = "(ns terrible.core)\n\n(def list (fn [& args]\n  (List.apply nil args)))\n\n(def symbol (fn [name]\n  (Symbol name)))\n\n(var set-macro\n  (fn [f]\n    (set! f.$macro true)\n    f))\n\n(def macro (set-macro\n  (fn [& body]\n    `(set-macro (fn ~@body)))))\n\n(def defmacro\n  (macro [name & body]\n    `(def ~name (macro ~@body))))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n";
 
 function Environment (target, interactive) {
 
@@ -84,8 +84,10 @@ Environment.prototype.evalText = function (text, error_cb) {
 
       results.push(processed);
 
-      this.current_namespace.ast_nodes =
-        this.current_namespace.ast_nodes.concat(nodes);
+      if (!processed.value || !processed.value.$macro) {
+        this.current_namespace.ast_nodes =
+          this.current_namespace.ast_nodes.concat(nodes);
+      }
     } catch (exception) {
       if (error_cb) {
         error_cb(form, form.$text, exception);

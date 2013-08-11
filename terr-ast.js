@@ -417,6 +417,7 @@ Terr.CompileToJS = function (ast, mode) {
     return compilers[ast.type].compile(ast, mode);
   } else {
     console.trace();
+    console.log(ast);
     throw "Implement Compiler for " + ast.type;
   }
 }

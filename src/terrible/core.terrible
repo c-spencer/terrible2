@@ -61,10 +61,10 @@
 
 (defmacro -> [left app & apps]
   (cond
-    (not app) left
+    (not app)       left
     (keyword? app) `(-> (get ~left ~app.name) ~@apps)
-    (list? app)     (let [new-list `(~app.values.0 ~left ~@(app.values.slice 1))]
-                      `(-> ~new-list ~@apps))
+    (list? app)    `(-> (~app.values.0 ~left ~@(app.values.slice 1))
+                        ~@apps)
     (symbol? app)  `(-> (~app ~left) ~@apps)
     :else           (throw "Invalid -> target")))
 

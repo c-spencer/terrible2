@@ -648,35 +648,6 @@ function compile_eval (node, env) {
   return ret;
 }
 
-var macros = {
-  defn: function (name) {
-    var body = Array.prototype.slice.call(arguments, 1);
-    return core.list(
-      core.symbol('def'),
-      name,
-      core.list.apply(null, [core.symbol('fn')].concat(body))
-    )
-  },
-
-  "setfn!": function (name) {
-    var body = Array.prototype.slice.call(arguments, 1);
-    return core.list(
-      core.symbol('set!'),
-      name,
-      core.list.apply(null, [core.symbol('fn')].concat(body))
-    )
-  },
-
-  "varfn": function (name) {
-    var body = Array.prototype.slice.call(arguments, 1);
-    return core.list(
-      core.symbol('var'),
-      name,
-      core.list.apply(null, [core.symbol('fn')].concat(body))
-    )
-  }
-}
-
 function loc (node, form) {
   if (node.loc) { form.loc = node.loc; }
   return form;
@@ -770,11 +741,16 @@ walk_handlers = {
           walker: walker,
           env: env
         }].concat(tail)));
-      } else if (macros[name]) {
-        return _loc(walker(env)(macros[name].apply(null, tail)));
       }
 
       var resolved = resolveSymbol(env, parsed_head);
+
+      if (resolved.value) {
+        var m = resolved.value;
+        if (m.$macro === true && typeof m === "function") {
+          return _loc(walker(env)(m.apply(null, tail)));
+        }
+      }
 
       if (resolved === false) {
         throw "Couldn't resolve " + name;

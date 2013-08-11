@@ -8,7 +8,7 @@ var parser = require('./parser');
 var core = require('./core');
 var fs = require('fs');
 
-var terrible_core = "(ns terrible.core)\n\n(defn list [& args]\n  (List.apply nil args))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol [name]\n  (Symbol name))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n";
+var terrible_core = "(ns terrible.core)\n\n(def list (fn [& args]\n  (List.apply nil args)))\n\n(def symbol (fn [name]\n  (Symbol name)))\n\n(def macro\n  (fn [f]\n    (set! f.$macro true)\n    f))\n\n(def defmacro\n  (macro (fn [name & body]\n    `(def ~name (macro (fn ~@body))))))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n";
 
 function Environment (target, interactive) {
 
@@ -60,6 +60,9 @@ Environment.prototype.getNamespace = function (name) {
     return ns;
   } else {
     var ns = new Namespace.Namespace(name, this.scope.newScope(true, false));
+    if (name != "terrible.core") {
+      ns.scope.refer("terrible.core", null, this.findNamespace("terrible.core"))
+    }
     this.namespaces.push(ns);
     return ns;
   }
@@ -6188,35 +6191,6 @@ function compile_eval (node, env) {
   return ret;
 }
 
-var macros = {
-  defn: function (name) {
-    var body = Array.prototype.slice.call(arguments, 1);
-    return core.list(
-      core.symbol('def'),
-      name,
-      core.list.apply(null, [core.symbol('fn')].concat(body))
-    )
-  },
-
-  "setfn!": function (name) {
-    var body = Array.prototype.slice.call(arguments, 1);
-    return core.list(
-      core.symbol('set!'),
-      name,
-      core.list.apply(null, [core.symbol('fn')].concat(body))
-    )
-  },
-
-  "varfn": function (name) {
-    var body = Array.prototype.slice.call(arguments, 1);
-    return core.list(
-      core.symbol('var'),
-      name,
-      core.list.apply(null, [core.symbol('fn')].concat(body))
-    )
-  }
-}
-
 function loc (node, form) {
   if (node.loc) { form.loc = node.loc; }
   return form;
@@ -6310,11 +6284,16 @@ walk_handlers = {
           walker: walker,
           env: env
         }].concat(tail)));
-      } else if (macros[name]) {
-        return _loc(walker(env)(macros[name].apply(null, tail)));
       }
 
       var resolved = resolveSymbol(env, parsed_head);
+
+      if (resolved.value) {
+        var m = resolved.value;
+        if (m.$macro === true && typeof m === "function") {
+          return _loc(walker(env)(m.apply(null, tail)));
+        }
+      }
 
       if (resolved === false) {
         throw "Couldn't resolve " + name;
@@ -6369,13 +6348,14 @@ walk_handlers = {
 
   "Symbol": function (node, walker, env) {
 
-    if (env.quoted == "quote") {
+    if (env.quoted == "quote" || builtins[node.name]) {
       walker = walker(env.setQuoted(false));
       return loc(node, Terr.Call(
         walker(core.symbol('terrible.core/symbol')),
         [Terr.Literal(node.name)]
       ));
     } else if (env.quoted == "syntax") {
+
       var parsed_node = parseSymbol(node.name);
       var resolved = resolveSymbol(env, parsed_node);
 

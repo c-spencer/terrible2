@@ -1,13 +1,31 @@
 (ns terrible.core)
 
-(defn list [& args]
-  (List.apply nil args))
+(def list (fn [& args]
+  (List.apply nil args)))
+
+(def symbol (fn [name]
+  (Symbol name)))
+
+(def macro
+  (fn [f]
+    (set! f.$macro true)
+    f))
+
+(def defmacro
+  (macro (fn [name & body]
+    `(def ~name (macro (fn ~@body))))))
+
+(defmacro defn [name & body]
+  `(def ~name (fn ~@body)))
+
+(defmacro varfn [name & body]
+  `(var ~name (fn ~@body)))
+
+(defmacro setfn! [name & body]
+  `(set! ~name (fn ~@body)))
 
 (defn list? [l]
   (instance? l List))
-
-(defn symbol [name]
-  (Symbol name))
 
 (defn symbol? [s]
   (instance? s Symbol))

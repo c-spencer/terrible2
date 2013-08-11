@@ -230,37 +230,50 @@ builtins = {
   "var": function (opts, id, val) {
     var walker = opts.walker,
         env = opts.env,
-        munged_name = declaration_guard(env, "var", id),
-        ns_name = env.env.current_namespace.name;
+        ns_name = env.env.current_namespace.name,
+        decls = [],
+        inputs = Array.prototype.slice.call(arguments, 1);
 
-    if (env.scope.nameClash(munged_name)) {
-      var js_name = env.genID(munged_name);
-    } else {
-      var js_name = munged_name;
+    for (var i = 0; i < inputs.length; i += 2) {
+      var id = inputs[i],
+          val = inputs[i + 1],
+          munged_name = declaration_guard(env, "var", id);
+
+      if (env.scope.nameClash(munged_name)) {
+        var js_name = env.genID(munged_name);
+      } else {
+        var js_name = munged_name;
+      }
+
+      if (env.scope.top_level) {
+        var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
+      } else {
+        var accessor = Terr.Identifier(js_name);
+      }
+
+      env.scope.addSymbol(munged_name, {
+        type: 'any',
+        accessor: accessor,
+        js_name: js_name,
+        export: false,
+        top_level: env.scope.top_level
+      });
+
+      val = declaration_val(val, walker, env, munged_name);
+
+      if (env.scope.top_level) {
+        decls.push(Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var"));
+      } else {
+        decls.push([accessor, val]);
+      }
     }
 
     if (env.scope.top_level) {
-      var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
+      return Terr.Seq(decls);
     } else {
-      var accessor = Terr.Identifier(js_name);
+      return Terr.Var(decls);
     }
 
-    env.scope.addSymbol(munged_name, {
-      type: 'any',
-      accessor: accessor,
-      js_name: js_name,
-      export: false,
-      top_level: env.scope.top_level
-    });
-
-    val = declaration_val(val, walker, env, munged_name);
-
-    if (env.scope.top_level) {
-      return Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var");
-    } else {
-      return Terr.Var(accessor, val);
-      return Terr.Var([[accessor, val]]);
-    }
   },
 
   "def": function (opts, id, val) {

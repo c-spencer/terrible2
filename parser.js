@@ -596,6 +596,19 @@ builtins = {
     return opts.walker(opts.env.setQuoted("quote"))(arg);
   },
 
+  "unquote": function (opts, arg) {
+    return opts.walker(opts.env.setQuoted(false))(arg);
+  },
+
+  "unquote-splicing": function (opts, arg) {
+    if (opts.env.quoted != "syntax") {
+      throw "Cannot call unquote-splicing outside of syntax-quote."
+    }
+    var result = opts.walker(opts.env.setQuoted(false))(arg);
+    result.$splice = true;
+    return result;
+  },
+
   "syntax-quote": function (opts, arg) {
     return opts.walker(opts.env.setQuoted("syntax"))(arg);
   }
@@ -677,17 +690,57 @@ walk_handlers = {
       return loc(node, form);
     }
 
-    if (env.quoted) {
-      var quoted_walker = walker(env);
-      var unquoted_walker = walker(env.setQuoted(false));
-      return _loc(Terr.Call(
-        unquoted_walker(core.symbol('list')),
-        node.values.map(quoted_walker)
-      ));
-    }
-
     var head = node.values[0];
     var tail = node.values.slice(1);
+
+    if (env.quoted) {
+
+      if (head && isSymbol(head) && (head.name == 'unquote' ||
+                                     head.name == "unquote-splicing")) {
+
+      } else {
+        var quoted_walker = walker(env);
+        var unquoted_walker = walker(env.setQuoted(false));
+
+        var list_symb = unquoted_walker(core.symbol('terrible.core/list'));
+        var values = node.values.map(quoted_walker);
+
+        if (env.quoted == "syntax") {
+
+          var args = [];
+          var root = null;
+
+          var pack_args = function () {
+            if (!root) {
+              root = Terr.Call(list_symb, args);
+              args = [];
+            } else {
+              root = Terr.Call(Terr.Member(root, Terr.Literal("push")), args);
+              args = [];
+            }
+          }
+
+          values.forEach(function (v) {
+            if (v.$splice) {
+              pack_args();
+              root = Terr.Call(Terr.Member(root, Terr.Literal("concat")), [v]);
+            } else {
+              args.push(v);
+            }
+          });
+          if (!root || args.length > 0) {
+            pack_args();
+          }
+
+          return _loc(root);
+        } else {
+          return _loc(Terr.Call(
+            list_symb,
+            values
+          ));
+        }
+      }
+    }
 
     if (head && isSymbol(head)) {
 
@@ -766,6 +819,9 @@ walk_handlers = {
 
       return _loc(Terr.Call(loc(head, target || walker(head)),
                             tail.map(walker)));
+    } else if (head && isList(head)) {
+      var walker = walker(env);
+      return _loc(Terr.Call(walker(head), tail.map(walker)));
     } else {
       throw "Cannot call `" + JSON.stringify(head) + "` as function."
     }
@@ -773,11 +829,28 @@ walk_handlers = {
 
   "Symbol": function (node, walker, env) {
 
-    if (env.quoted) {
+    if (env.quoted == "quote") {
       walker = walker(env.setQuoted(false));
       return loc(node, Terr.Call(
-        walker(core.symbol('symbol')),
-        [node.name]
+        walker(core.symbol('terrible.core/symbol')),
+        [Terr.Literal(node.name)]
+      ));
+    } else if (env.quoted == "syntax") {
+      var parsed_node = parseSymbol(node.name);
+      var resolved = resolveSymbol(env, parsed_node);
+
+      if (!resolved) {
+        console.trace();
+        throw "Couldn't resolve `" + node.name + "`";
+      }
+
+      walker = walker(env.setQuoted(false));
+
+      var ns = parsed_node.namespace || env.env.current_namespace.name;
+
+      return loc(node, Terr.Call(
+        walker(core.symbol('terrible.core/symbol')),
+        [Terr.Literal(ns + "/" + [parsed_node.root].concat(parsed_node.parts).join("."))]
       ));
     }
 
@@ -809,7 +882,7 @@ walk_handlers = {
   },
 
   "Keyword": function (node, walker, env) {
-    return walker(env)(core.list("keyword", node.toString()));
+    return walker(env)(core.list(core.symbol("terrible.core/keyword"), node.toString()));
 
     // Terr.Call(
     //   Terr.Member(

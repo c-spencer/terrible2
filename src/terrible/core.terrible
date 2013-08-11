@@ -43,30 +43,13 @@
 (defn keyword? [k]
   (instance? k Keyword))
 
-(defmacro cond [& cases]
-  (if (and (keyword? cases.0)
-           (= cases.0.name "else"))
-    cases.1
-    (if cases.2
-      `(if ~cases.0 ~cases.1 (cond ~@(cases.slice 2)))
-      `(if ~cases.0 ~cases.1))))
-
-; might need some other supporting functionality before protocols
-; like loops..
-
-; (defmacro defprotocol [name & fns]
-;   (var marker (symbol (+ name.name "$proto")))
-;   (print marker)
-
-;   `(do
-;     ~@(fns.map
-;       (fn [list]
-;         `(defn ~list.values.0 ~list.values.1 (+ 1 2))
-;   ))))
-
-; (defprotocol Iterable
-;   (map [obj func])
-;   (each [obj func]))
+(defmacro cond [t v & cases]
+  (if (and (keyword? t)
+           (= t.name "else"))
+    v
+    (if (> cases.length 0)
+      `(if ~t ~v (cond ~@cases))
+      `(if ~t ~v))))
 
 (defmacro let [bindings & body]
   (var vars [])
@@ -75,3 +58,42 @@
          v (get bindings (+ i 1)))
     (vars.push `(var ~s ~v)))
   `(do ~@vars ~@body))
+
+(defmacro -> [left app & apps]
+  (cond
+    (not app) left
+    (keyword? app) `(-> (get ~left ~app.name) ~@apps)
+    (list? app)     (let [new-list `(~app.values.0 ~left ~@(app.values.slice 1))]
+                      `(-> ~new-list ~@apps))
+    (symbol? app)  `(-> (~app ~left) ~@apps)
+    :else           (throw "Invalid -> target")))
+
+; (defmacro defprotocol [name & fns]
+;   (let [marker (+ name.name "$proto")
+;         first (fn [list] list.values.0)
+;         name (fn [symb] symb.name)
+;         fn-names (.map (fns.map first) name)]
+;     `(do
+;       `(def ~name { ~@(keyword (+ "$default$" ))}))))
+
+; ; declaration
+; (defprotocol Iterable
+;   (map [obj func])
+;   (each [obj func]))
+
+; ; expansion
+; (def Iterable
+;   { :$default$map nil
+;     :$default$each nil })
+
+; (defn map [obj func]
+;   (cond
+;     obj.Iterable$proto$map (obj.Iterable$proto$map obj func)
+;     Iterable.$default$map (Iterable.$default$map obj func)
+;     :else (throw "No suitable implementation of Iterable map$2 found.")))
+
+; (defn each [obj func]
+;   (cond
+;     obj.Iterable$proto$each (obj.Iterable$proto$each obj func)
+;     Iterable.$default$each (Iterable.$default$each obj func)
+;     :else (throw "No suitable implementation of Iterable each$2 found.")))

@@ -483,7 +483,12 @@ builtins = {
       }
     }
 
-    return Terr.Seq(seq);
+    if (seq.length == 1) {
+      return seq[0];
+    } else {
+      return Terr.Seq(seq);
+    }
+
   },
 
   // Open a new logical scope, but not a new javascript scope, to allow block

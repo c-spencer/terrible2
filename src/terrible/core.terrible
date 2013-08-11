@@ -50,3 +50,29 @@
     (if cases.2
       `(if ~cases.0 ~cases.1 (cond ~@(cases.slice 2)))
       `(if ~cases.0 ~cases.1))))
+
+; might need some other supporting functionality before protocols
+; like loops..
+
+; (defmacro defprotocol [name & fns]
+;   (var marker (symbol (+ name.name "$proto")))
+;   (print marker)
+
+;   `(do
+;     ~@(fns.map
+;       (fn [list]
+;         `(defn ~list.values.0 ~list.values.1 (+ 1 2))
+;   ))))
+
+; (defprotocol Iterable
+;   (map [obj func])
+;   (each [obj func]))
+
+(defmacro let [bindings & body]
+  (var vars [])
+  ; I really need to add iteration somewhere..
+  (bindings.forEach (fn [v i]
+    (if (not (mod i 2))
+      (vars.push `(var ~v ~(get bindings (+ i 1))))
+  )))
+  `(do ~@vars ~@body))

@@ -8,7 +8,7 @@ var parser = require('./parser');
 var core = require('./core');
 var fs = require('fs');
 
-var terrible_core = "(ns terrible.core)\n\n(def list (lambda [& args]\n  (List.apply nil args)))\n\n(def symbol (lambda [name]\n  (Symbol name)))\n\n(var set-macro\n  (lambda [f]\n    (set! f.$macro true)\n    f))\n\n(def macro (set-macro\n  (lambda [& body]\n    `(set-macro (lambda ~@body)))))\n\n(def defmacro\n  (macro [name & body]\n    `(def ~name (macro ~@body))))\n\n(defmacro fn [& body]\n  `(lambda ~@body))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n\n(defmacro cond [& cases]\n  (if (and (keyword? cases.0)\n           (= cases.0.name \"else\"))\n    cases.1\n    (if cases.2\n      `(if ~cases.0 ~cases.1 (cond ~@(cases.slice 2)))\n      `(if ~cases.0 ~cases.1))))\n";
+var terrible_core = "(ns terrible.core)\n\n(def list (lambda [& args]\n  (List.apply nil args)))\n\n(def symbol (lambda [name]\n  (Symbol name)))\n\n(var set-macro\n  (lambda [f]\n    (set! f.$macro true)\n    f))\n\n(def macro (set-macro\n  (lambda [& body]\n    `(set-macro (lambda ~@body)))))\n\n(def defmacro\n  (macro [name & body]\n    `(def ~name (macro ~@body))))\n\n(defmacro fn [& body]\n  `(lambda ~@body))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n\n(defmacro cond [& cases]\n  (if (and (keyword? cases.0)\n           (= cases.0.name \"else\"))\n    cases.1\n    (if cases.2\n      `(if ~cases.0 ~cases.1 (cond ~@(cases.slice 2)))\n      `(if ~cases.0 ~cases.1))))\n\n; might need some other supporting functionality before protocols\n; like loops..\n\n; (defmacro defprotocol [name & fns]\n;   (var marker (symbol (+ name.name \"$proto\")))\n;   (print marker)\n\n;   `(do\n;     ~@(fns.map\n;       (fn [list]\n;         `(defn ~list.values.0 ~list.values.1 (+ 1 2))\n;   ))))\n\n; (defprotocol Iterable\n;   (map [obj func])\n;   (each [obj func]))\n\n(defmacro let [bindings & body]\n  (var vars [])\n  ; I really need to add iteration somewhere..\n  (bindings.forEach (fn [v i]\n    (if (not (mod i 2))\n      (vars.push `(var ~v ~(get bindings (+ i 1))))\n  )))\n  `(do ~@vars ~@body))\n";
 
 function Environment (target, interactive) {
 
@@ -5707,8 +5707,11 @@ builtins = {
   'and': makeBinary('&&'),
   '>': makeBinary('>'),
   '>=': makeBinary('>='),
+  '<': makeBinary('>'),
+  '<=': makeBinary('>='),
   '/': makeBinary('/'),
   'instance?': makeBinary('instanceof'),
+  'mod': makeBinary('%'),
 
   'not': makeUnary('!'),
   'xor': makeUnary('~'),
@@ -6185,7 +6188,7 @@ function compile_eval (node, env) {
   var js = codegen.generate(JS.Program(compile_nodes));
 
   // console.log("<--Compile Eval-->")
-  console.log(js);
+  // console.log(js);
   // console.log("<--Run Compile Eval-->");
   var ret = new Function('$ENV', js)(ENV);
   // console.log("<--End Compile Eval-->")
@@ -7206,7 +7209,6 @@ function intoBlock (node, mode) {
   if (node !== undefined) {
     var r = Terr.CompileToJS(node, mode);
     if (r.length == 1) {
-      console.log("intoBlock bare", r);
       return r[0];
     } else {
       return JS.Block(r);
@@ -7436,8 +7438,6 @@ var compilers = {
     fields: ['test', 'cons', 'alt'],
     compile: function (node, mode) {
       var test = Terr.CompileToJS(node.test, "expression");
-
-      console.log("If", node);
 
       if (mode == "expression") {
         return JS.ConditionalExpression(test,

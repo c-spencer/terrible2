@@ -162,8 +162,11 @@ builtins = {
   'and': makeBinary('&&'),
   '>': makeBinary('>'),
   '>=': makeBinary('>='),
+  '<': makeBinary('>'),
+  '<=': makeBinary('>='),
   '/': makeBinary('/'),
   'instance?': makeBinary('instanceof'),
+  'mod': makeBinary('%'),
 
   'not': makeUnary('!'),
   'xor': makeUnary('~'),

@@ -266,12 +266,13 @@ builtins = {
     var walker = opts.walker,
         env = opts.env,
         munged_name = declaration_guard(env, "def", id),
-        ns_name = env.env.current_namespace.name;
+        ns_name = env.env.current_namespace.name,
+        munged_ns = mungeSymbol(ns_name.replace(/\./g, '$')) + "$";
 
     if (env.scope.nameClash(munged_name)) {
-      var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + env.genID(munged_name);
+      var js_name = munged_ns + env.genID(munged_name);
     } else {
-      var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + munged_name;
+      var js_name = munged_ns + munged_name;
     }
 
     var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);

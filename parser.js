@@ -799,7 +799,7 @@ walk_handlers = {
         if (env.env.interactive) {
           // arities could change out underneath us, so don't specialise here
         } else if (fn_node.arities.length == 1) { // mono-arity, no sub-dispatch
-          if (fn_node.variadic) {
+          if (fn_node.variadic !== null) {
             if (tail.length < fn_node.variadic) {
               throw "Function `" + name + "` expects at least " + fn_node.variadic + " arguments, but " + tail.length + " provided."
             }

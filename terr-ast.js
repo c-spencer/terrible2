@@ -443,6 +443,13 @@ var compilers = {
         return [statement];
       }
     }
+  },
+
+  Splice: {
+    fields: ['value'],
+    compile: function (node, mode) {
+      throw "Cannot compile Splice to JS, should be stripped by parser."
+    }
   }
 }
 

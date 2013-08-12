@@ -627,8 +627,8 @@ builtins = {
       throw "Cannot call unquote-splicing outside of syntax-quote."
     }
     var result = opts.walker(opts.env.setQuoted(false))(arg);
-    result.$splice = true;
-    return result;
+
+    return Terr.Splice(result);
   },
 
   "syntax-quote": function (opts, arg) {
@@ -714,9 +714,9 @@ walk_handlers = {
           }
 
           values.forEach(function (v) {
-            if (v.$splice) {
+            if (v.type == "Splice") {
               pack_args();
-              root = Terr.Call(Terr.Member(root, Terr.Literal("concat")), [v]);
+              root = Terr.Call(Terr.Member(root, Terr.Literal("concat")), [v.value]);
             } else {
               args.push(v);
             }

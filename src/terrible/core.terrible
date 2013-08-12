@@ -68,34 +68,44 @@
     (symbol? app)  `(-> (~app ~left) ~@apps)
     :else           (throw "Invalid -> target")))
 
-; (defmacro defprotocol [symb & fns]
-;   (let [marker (+ symb.name "$proto")
-;         first (fn [list] list.values.0)
-;         name (fn [symb] symb.name)
-;         fn-names (-> fns (.map first) (.map name))
-;         defaults {}]
-;     (fn-names.forEach (fn [n]
-;       (set! (get defaults (+ "default$" n)) nil)))
-;     `(def ~symb ~defaults)))
+(defmacro defprotocol [symb & fns]
+  (let [proto-marker (+ symb.name "$proto$")
+        fn-defs (fns.map (fn [list]
+                  (let [n       list.values.0
+                        args    list.values.1
+                        body   (list.values.slice 2)
+                        marker (+ proto-marker n.name)]
+                    `(defn ~n ~args
+                      (if (get ~args.0 ~marker)
+                        ((get ~args.0 ~marker) ~@args)
+                        (do ~@body))))))]
 
-; ; declaration
-; (defprotocol Iterable
-;   (map [obj func])
-;   (each [obj func]))
+    `(do-noscope
+      (def ~symb ~proto-marker)
+      ~@fn-defs)))
 
-; ; expansion
-; (def Iterable
-;   { :$default$map nil
-;     :$default$each nil })
+(defmacro extend-type [cls protocol & methods]
+  `(do
+    ~@(methods.map (fn [method]
+      (let [n method.values.0]
+       `(set!
+          (get (get ~cls "prototype") (+ ~protocol ~n.name))
+          (fn ~@(method.values.slice 1))))
+      ))))
 
-; (defn map [obj func]
-;   (cond
-;     obj.Iterable$proto$map (obj.Iterable$proto$map obj func)
-;     Iterable.$default$map (Iterable.$default$map obj func)
-;     :else (throw "No suitable implementation of Iterable map$2 found.")))
+(defprotocol Iterable
+  (map [obj func]
+    (let [new-obj {}]
+      (js-for-in k obj
+        (if (obj.hasOwnProperty k)
+          (set! (get new-obj k) (func (get obj k) k))))
+      new-obj))
+  (each [obj func]
+    (js-for-in k obj
+      (if (obj.hasOwnProperty k)
+        (func (get obj k) k)))
+    nil))
 
-; (defn each [obj func]
-;   (cond
-;     obj.Iterable$proto$each (obj.Iterable$proto$each obj func)
-;     Iterable.$default$each (Iterable.$default$each obj func)
-;     :else (throw "No suitable implementation of Iterable each$2 found.")))
+(extend-type Array Iterable
+  (map [arr func] (arr.map func))
+  (each [arr func] (arr.forEach func)))

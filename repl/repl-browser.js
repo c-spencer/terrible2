@@ -8,7 +8,7 @@ var parser = require('./parser');
 var core = require('./core');
 var fs = require('fs');
 
-var terrible_core = "(ns terrible.core)\n\n(def list (lambda [& args]\n  (List.apply nil args)))\n\n(def symbol (lambda [name]\n  (Symbol name)))\n\n(var set-macro\n  (lambda [f]\n    (set! f.$macro true)\n    f))\n\n(def macro (set-macro\n  (lambda [& body]\n    `(set-macro (lambda ~@body)))))\n\n(def defmacro\n  (macro [name & body]\n    `(def ~name (macro ~@body))))\n\n(defmacro fn [& body]\n  `(lambda ~@body))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n\n(defmacro cond [t v & cases]\n  (if (and (keyword? t)\n           (= t.name \"else\"))\n    v\n    (if (> cases.length 0)\n      `(if ~t ~v (cond ~@cases))\n      `(if ~t ~v))))\n\n(defmacro let [bindings & body]\n  (var vars [])\n  (js-for [i 0] (< i bindings.length) (set! i (+ i 2))\n    (var s (get bindings i)\n         v (get bindings (+ i 1)))\n    (vars.push `(var ~s ~v)))\n  `(do ~@vars ~@body))\n\n(defmacro -> [left app & apps]\n  (cond\n    (not app)       left\n    (keyword? app) `(-> (get ~left ~app.name) ~@apps)\n    (list? app)    `(-> (~app.values.0 ~left ~@(app.values.slice 1))\n                        ~@apps)\n    (symbol? app)  `(-> (~app ~left) ~@apps)\n    :else           (throw \"Invalid -> target\")))\n\n; (defmacro defprotocol [symb & fns]\n;   (let [marker (+ symb.name \"$proto\")\n;         first (fn [list] list.values.0)\n;         name (fn [symb] symb.name)\n;         fn-names (-> fns (.map first) (.map name))\n;         defaults {}]\n;     (fn-names.forEach (fn [n]\n;       (set! (get defaults (+ \"default$\" n)) nil)))\n;     `(def ~symb ~defaults)))\n\n; ; declaration\n; (defprotocol Iterable\n;   (map [obj func])\n;   (each [obj func]))\n\n; ; expansion\n; (def Iterable\n;   { :$default$map nil\n;     :$default$each nil })\n\n; (defn map [obj func]\n;   (cond\n;     obj.Iterable$proto$map (obj.Iterable$proto$map obj func)\n;     Iterable.$default$map (Iterable.$default$map obj func)\n;     :else (throw \"No suitable implementation of Iterable map$2 found.\")))\n\n; (defn each [obj func]\n;   (cond\n;     obj.Iterable$proto$each (obj.Iterable$proto$each obj func)\n;     Iterable.$default$each (Iterable.$default$each obj func)\n;     :else (throw \"No suitable implementation of Iterable each$2 found.\")))\n";
+var terrible_core = "(ns terrible.core)\n\n(def list (lambda [& args]\n  (List.apply nil args)))\n\n(def symbol (lambda [name]\n  (Symbol name)))\n\n(var set-macro\n  (lambda [f]\n    (set! f.$macro true)\n    f))\n\n(def macro (set-macro\n  (lambda [& body]\n    `(set-macro (lambda ~@body)))))\n\n(def defmacro\n  (macro [name & body]\n    `(def ~name (macro ~@body))))\n\n(defmacro fn [& body]\n  `(lambda ~@body))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n\n(defmacro cond [t v & cases]\n  (if (and (keyword? t)\n           (= t.name \"else\"))\n    v\n    (if (> cases.length 0)\n      `(if ~t ~v (cond ~@cases))\n      `(if ~t ~v))))\n\n(defmacro let [bindings & body]\n  (var vars [])\n  (js-for [i 0] (< i bindings.length) (set! i (+ i 2))\n    (var s (get bindings i)\n         v (get bindings (+ i 1)))\n    (vars.push `(var ~s ~v)))\n  `(do ~@vars ~@body))\n\n(defmacro -> [left app & apps]\n  (cond\n    (not app)       left\n    (keyword? app) `(-> (get ~left ~app.name) ~@apps)\n    (list? app)    `(-> (~app.values.0 ~left ~@(app.values.slice 1))\n                        ~@apps)\n    (symbol? app)  `(-> (~app ~left) ~@apps)\n    :else           (throw \"Invalid -> target\")))\n\n(defmacro defprotocol [symb & fns]\n  (let [proto-marker (+ symb.name \"$proto$\")\n        fn-defs (fns.map (fn [list]\n                  (let [n       list.values.0\n                        args    list.values.1\n                        body   (list.values.slice 2)\n                        marker (+ proto-marker n.name)]\n                    `(defn ~n ~args\n                      (if (get ~args.0 ~marker)\n                        ((get ~args.0 ~marker) ~@args)\n                        (do ~@body))))))]\n\n    `(do-noscope\n      (def ~symb ~proto-marker)\n      ~@fn-defs)))\n\n(defmacro extend-type [cls protocol & methods]\n  `(do\n    ~@(methods.map (fn [method]\n      (let [n method.values.0]\n       `(set!\n          (get (get ~cls \"prototype\") (+ ~protocol ~n.name))\n          (fn ~@(method.values.slice 1))))\n      ))))\n\n(defprotocol Iterable\n  (map [obj func]\n    (let [new-obj {}]\n      (js-for-in k obj\n        (if (obj.hasOwnProperty k)\n          (set! (get new-obj k) (func (get obj k) k))))\n      new-obj))\n  (each [obj func]\n    (js-for-in k obj\n      (if (obj.hasOwnProperty k)\n        (func (get obj k) k)))\n    nil))\n\n(extend-type Array Iterable\n  (map [arr func] (arr.map func))\n  (each [arr func] (arr.forEach func)))\n";
 
 function Environment (target, interactive) {
 
@@ -241,6 +241,15 @@ exports.ForStatement = function(init, test, update, body) {
     init: init,
     test: test,
     update: update,
+    body: body
+  };
+};
+
+exports.ForInStatement = function (left, right, body) {
+  return {
+    type: 'ForInStatement',
+    left: left,
+    right: right,
     body: body
   };
 };
@@ -524,6 +533,15 @@ exports.ForStatement = function(init, test, update, body) {
     init: init,
     test: test,
     update: update,
+    body: body
+  };
+};
+
+exports.ForInStatement = function (left, right, body) {
+  return {
+    type: 'ForInStatement',
+    left: left,
+    right: right,
     body: body
   };
 };
@@ -6053,6 +6071,16 @@ builtins = {
     return Terr.Seq(args.map(walker));
   },
 
+  // As do, but no new scope.
+  // stop-gap until def can jump up scopes
+  "do-noscope": function (opts) {
+    var walker = opts.walker(opts.env);
+
+    var args = Array.prototype.slice.call(arguments, 1);
+
+    return Terr.Seq(args.map(walker));
+  },
+
   // (for [i 0 len 10] (< i len) (set! i (inc i))
   //    i)
 
@@ -6070,6 +6098,25 @@ builtins = {
     var body = Terr.Seq(Array.prototype.slice.call(arguments, 4).map(walker));
 
     return Terr.For(init, test, update, body);
+  },
+
+  "js-for-in": function (opts, left, right) {
+    var walker = opts.walker,
+        env = opts.env;
+
+    env = env.newScope(true, false);
+
+    var walker = walker(env);
+
+    if (!isSymbol(left)) {
+      throw "Left binding in js-for-in must be symbol."
+    }
+
+    var left = walker(core.list(core.symbol('var'), left));
+    var right = walker(right);
+    var body = Terr.Seq(Array.prototype.slice.call(arguments, 3).map(walker));
+
+    return Terr.ForIn(left, right, body);
   },
 
   // (while (< i 10) (inc i))
@@ -6155,8 +6202,8 @@ builtins = {
       throw "Cannot call unquote-splicing outside of syntax-quote."
     }
     var result = opts.walker(opts.env.setQuoted(false))(arg);
-    result.$splice = true;
-    return result;
+
+    return Terr.Splice(result);
   },
 
   "syntax-quote": function (opts, arg) {
@@ -6242,9 +6289,9 @@ walk_handlers = {
           }
 
           values.forEach(function (v) {
-            if (v.$splice) {
+            if (v.type == "Splice") {
               pack_args();
-              root = Terr.Call(Terr.Member(root, Terr.Literal("concat")), [v]);
+              root = Terr.Call(Terr.Member(root, Terr.Literal("concat")), [v.value]);
             } else {
               args.push(v);
             }
@@ -7636,6 +7683,24 @@ var compilers = {
     }
   },
 
+  ForIn: {
+    fields: ['left', 'right', 'body'],
+    compile: function (node, mode) {
+      if (mode == "expression") {
+        console.log("ForIn not supported in expression position.")
+        throw "ForIn not supported in expression position."
+      }
+
+      var forin_statement = JS.ForInStatement(
+        intoBlock(node.left, "statement"),
+        Terr.CompileToJS(node.right, "expression"),
+        intoBlock(node.body, "statement")
+      )
+
+      return [forin_statement];
+    }
+  },
+
   Throw: {
     fields: ['expression'],
     compile: function (node, mode) {
@@ -7645,6 +7710,13 @@ var compilers = {
       } else {
         return [statement];
       }
+    }
+  },
+
+  Splice: {
+    fields: ['value'],
+    compile: function (node, mode) {
+      throw "Cannot compile Splice to JS, should be stripped by parser."
     }
   }
 }

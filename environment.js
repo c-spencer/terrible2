@@ -28,6 +28,7 @@ function Environment (target, interactive) {
   this.scope.expose('Function', Function);
   this.scope.expose('Object', Object);
   this.scope.expose('Number', Number);
+  this.scope.expose('String', String);
 
   this.scope.expose('JSON', JSON);
   this.scope.expose('console', console);

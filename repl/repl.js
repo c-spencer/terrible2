@@ -11,7 +11,12 @@ function compileTerrible(text) {
   var env = new Environment(target, interactive);
   var messages = [];
   env.scope.expose('print', function (v) {
-    messages.push("> " + v);
+    // Somewhat messy reach-in
+    var scope = env.findNamespace('terrible.core').scope;
+    var printer = scope.resolve('print_str');
+    if (printer && printer.value) {
+      messages.push("> " + printer.value(v));
+    }
   });
 
   try {

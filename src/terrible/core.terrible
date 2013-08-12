@@ -43,6 +43,16 @@
 (defn keyword? [k]
   (instance? k Keyword))
 
+(defn string? [s]
+  (= (type s) "string"))
+
+(defn number? [s]
+  (= (type s) "number"))
+
+(defn object? [o]
+  (and (not= nil o)
+       (= (type o) "object")))
+
 (defmacro cond [t v & cases]
   (if (and (keyword? t)
            (= t.name "else"))
@@ -109,3 +119,26 @@
 (extend-type Array Iterable
   (map [arr func] (arr.map func))
   (each [arr func] (arr.forEach func)))
+
+(defprotocol Printable
+  (print-str [obj]
+    (cond
+      (object? obj) (let [parts []]
+                      (each obj (fn [v k]
+                        (parts.push (print-str k))
+                        (parts.push (print-str v))))
+                      (+ "{" (parts.join " ") "}"))
+      :else         (JSON.stringify obj))))
+
+(extend-type Array Printable
+  (print-str [arr]
+    (+ "[" (.join (map arr print-str) " ") "]")))
+
+(extend-type List Printable
+  (print-str [list]
+    (+ "(" (.join (map list.values print-str) " ") ")"))
+  )
+
+(extend-type Keyword Printable
+  (print-str [kw]
+    (+ ":" kw.name)))

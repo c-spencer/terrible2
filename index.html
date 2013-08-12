@@ -79,6 +79,10 @@
         margin: 0;
         padding: 10px;
       }
+      .value.exception {
+        background: #911;
+        color: white;
+      }
       .repl-bottom {
         height: 150px;
         bottom: 0;
@@ -189,6 +193,10 @@
           <input type="checkbox" id="environment-interactive">
           Show Interactive (DEBUG)
         </label>
+        <label>
+          <input type="checkbox" id="environment-minify">
+          Minify
+        </label>
       </div>
       <textarea class="panel output" id="terrible-log"></textarea>
     </div>
@@ -199,6 +207,7 @@
         eval<br>(shift+enter)
       </button>
     </div>
+    <script src="./uglify-browser.js"></script>
     <script src="./repl-browser.js"></script>
   </body>
 </html>

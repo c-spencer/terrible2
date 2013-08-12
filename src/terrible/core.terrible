@@ -68,13 +68,15 @@
     (symbol? app)  `(-> (~app ~left) ~@apps)
     :else           (throw "Invalid -> target")))
 
-; (defmacro defprotocol [name & fns]
-;   (let [marker (+ name.name "$proto")
+; (defmacro defprotocol [symb & fns]
+;   (let [marker (+ symb.name "$proto")
 ;         first (fn [list] list.values.0)
 ;         name (fn [symb] symb.name)
-;         fn-names (.map (fns.map first) name)]
-;     `(do
-;       `(def ~name { ~@(keyword (+ "$default$" ))}))))
+;         fn-names (-> fns (.map first) (.map name))
+;         defaults {}]
+;     (fn-names.forEach (fn [n]
+;       (set! (get defaults (+ "default$" n)) nil)))
+;     `(def ~symb ~defaults)))
 
 ; ; declaration
 ; (defprotocol Iterable

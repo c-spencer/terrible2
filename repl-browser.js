@@ -818,7 +818,13 @@ function Namespace (name, scope) {
 }
 
 Namespace.prototype.exportsMap = function () {
-  return this.scope.exports().map(function (exported) {
+  return this.scope.exports().filter(function (exported) {
+    if (exported.data.value && exported.data.value.$macro) {
+      return false;
+    } else {
+      return true;
+    }
+  }).map(function (exported) {
     return {
       key: exported.name,
       value: exported.data.accessor

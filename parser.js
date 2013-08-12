@@ -506,6 +506,16 @@ builtins = {
     return Terr.Seq(args.map(walker));
   },
 
+  // As do, but no new scope.
+  // stop-gap until def can jump up scopes
+  "do-noscope": function (opts) {
+    var walker = opts.walker(opts.env);
+
+    var args = Array.prototype.slice.call(arguments, 1);
+
+    return Terr.Seq(args.map(walker));
+  },
+
   // (for [i 0 len 10] (< i len) (set! i (inc i))
   //    i)
 

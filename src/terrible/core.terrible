@@ -136,9 +136,11 @@
 
 (extend-type List Printable
   (print-str [list]
-    (+ "(" (.join (map list.values print-str) " ") ")"))
-  )
+    (+ "(" (.join (map list.values print-str) " ") ")")))
 
 (extend-type Keyword Printable
   (print-str [kw]
     (+ ":" kw.name)))
+
+(extend-type Symbol Printable
+  (print-str [symb] symb.name))

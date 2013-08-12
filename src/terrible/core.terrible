@@ -120,6 +120,10 @@
   (map [arr func] (arr.map func))
   (each [arr func] (arr.forEach func)))
 
+(extend-type List Iterable
+  (map [this-list func] (.concat (list) (this-list.values.map func)))
+  (each [this-list func] (this-list.values.forEach func)))
+
 (defprotocol Printable
   (print-str [obj]
     (cond
@@ -136,7 +140,7 @@
 
 (extend-type List Printable
   (print-str [list]
-    (+ "(" (.join (map list.values print-str) " ") ")")))
+    (+ "(" (.values.join (map list print-str) " ") ")")))
 
 (extend-type Keyword Printable
   (print-str [kw]

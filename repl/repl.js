@@ -1,10 +1,11 @@
-var Environment = require('./Environment').Environment;
+var Environment = require('../Environment').Environment;
 
 // INPUT OUTPUT
 
 var target = "browser";
 var mode = "library";
 var interactive = false;
+var minify = false;
 
 function compileTerrible(text) {
   var env = new Environment(target, interactive);
@@ -28,7 +29,17 @@ function compileTerrible(text) {
     }
   }
 
-  return { js: env.asJS(mode), log: messages };
+  var js = env.asJS(mode);
+
+  if (minify) {
+    var parsed = UglifyJS.parse(js, {});
+    parsed.figure_out_scope();
+    var compressor = UglifyJS.Compressor({});
+    var compressed = parsed.transform(compressor);
+    js = compressed.print_to_string({beautify: true});
+  }
+
+  return { js: js, log: messages };
 }
 
 var last_compile = null;
@@ -65,7 +76,14 @@ document.getElementById('environment-interactive').addEventListener('change',
   function () {
     var el = document.getElementById('environment-interactive');
     interactive = el.checked;
-    console.log("interactive", interactive);
+    doCompile(true);
+  }
+);
+
+document.getElementById('environment-minify').addEventListener('change',
+  function () {
+    var el = document.getElementById('environment-minify');
+    minify = el.checked;
     doCompile(true);
   }
 );

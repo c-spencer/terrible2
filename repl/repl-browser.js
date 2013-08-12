@@ -8,7 +8,7 @@ var parser = require('./parser');
 var core = require('./core');
 var fs = require('fs');
 
-var terrible_core = "(ns terrible.core)\n\n(def list (lambda [& args]\n  (List.apply nil args)))\n\n(def symbol (lambda [name]\n  (Symbol name)))\n\n(var set-macro\n  (lambda [f]\n    (set! f.$macro true)\n    f))\n\n(def macro (set-macro\n  (lambda [& body]\n    `(set-macro (lambda ~@body)))))\n\n(def defmacro\n  (macro [name & body]\n    `(def ~name (macro ~@body))))\n\n(defmacro fn [& body]\n  `(lambda ~@body))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n\n(defmacro cond [t v & cases]\n  (if (and (keyword? t)\n           (= t.name \"else\"))\n    v\n    (if (> cases.length 0)\n      `(if ~t ~v (cond ~@cases))\n      `(if ~t ~v))))\n\n(defmacro let [bindings & body]\n  (var vars [])\n  (js-for [i 0] (< i bindings.length) (set! i (+ i 2))\n    (var s (get bindings i)\n         v (get bindings (+ i 1)))\n    (vars.push `(var ~s ~v)))\n  `(do ~@vars ~@body))\n\n(defmacro -> [left app & apps]\n  (cond\n    (not app)       left\n    (keyword? app) `(-> (get ~left ~app.name) ~@apps)\n    (list? app)    `(-> (~app.values.0 ~left ~@(app.values.slice 1))\n                        ~@apps)\n    (symbol? app)  `(-> (~app ~left) ~@apps)\n    :else           (throw \"Invalid -> target\")))\n\n; (defmacro defprotocol [name & fns]\n;   (let [marker (+ name.name \"$proto\")\n;         first (fn [list] list.values.0)\n;         name (fn [symb] symb.name)\n;         fn-names (.map (fns.map first) name)]\n;     `(do\n;       `(def ~name { ~@(keyword (+ \"$default$\" ))}))))\n\n; ; declaration\n; (defprotocol Iterable\n;   (map [obj func])\n;   (each [obj func]))\n\n; ; expansion\n; (def Iterable\n;   { :$default$map nil\n;     :$default$each nil })\n\n; (defn map [obj func]\n;   (cond\n;     obj.Iterable$proto$map (obj.Iterable$proto$map obj func)\n;     Iterable.$default$map (Iterable.$default$map obj func)\n;     :else (throw \"No suitable implementation of Iterable map$2 found.\")))\n\n; (defn each [obj func]\n;   (cond\n;     obj.Iterable$proto$each (obj.Iterable$proto$each obj func)\n;     Iterable.$default$each (Iterable.$default$each obj func)\n;     :else (throw \"No suitable implementation of Iterable each$2 found.\")))\n";
+var terrible_core = "(ns terrible.core)\n\n(def list (lambda [& args]\n  (List.apply nil args)))\n\n(def symbol (lambda [name]\n  (Symbol name)))\n\n(var set-macro\n  (lambda [f]\n    (set! f.$macro true)\n    f))\n\n(def macro (set-macro\n  (lambda [& body]\n    `(set-macro (lambda ~@body)))))\n\n(def defmacro\n  (macro [name & body]\n    `(def ~name (macro ~@body))))\n\n(defmacro fn [& body]\n  `(lambda ~@body))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n\n(defmacro cond [t v & cases]\n  (if (and (keyword? t)\n           (= t.name \"else\"))\n    v\n    (if (> cases.length 0)\n      `(if ~t ~v (cond ~@cases))\n      `(if ~t ~v))))\n\n(defmacro let [bindings & body]\n  (var vars [])\n  (js-for [i 0] (< i bindings.length) (set! i (+ i 2))\n    (var s (get bindings i)\n         v (get bindings (+ i 1)))\n    (vars.push `(var ~s ~v)))\n  `(do ~@vars ~@body))\n\n(defmacro -> [left app & apps]\n  (cond\n    (not app)       left\n    (keyword? app) `(-> (get ~left ~app.name) ~@apps)\n    (list? app)    `(-> (~app.values.0 ~left ~@(app.values.slice 1))\n                        ~@apps)\n    (symbol? app)  `(-> (~app ~left) ~@apps)\n    :else           (throw \"Invalid -> target\")))\n\n; (defmacro defprotocol [symb & fns]\n;   (let [marker (+ symb.name \"$proto\")\n;         first (fn [list] list.values.0)\n;         name (fn [symb] symb.name)\n;         fn-names (-> fns (.map first) (.map name))\n;         defaults {}]\n;     (fn-names.forEach (fn [n]\n;       (set! (get defaults (+ \"default$\" n)) nil)))\n;     `(def ~symb ~defaults)))\n\n; ; declaration\n; (defprotocol Iterable\n;   (map [obj func])\n;   (each [obj func]))\n\n; ; expansion\n; (def Iterable\n;   { :$default$map nil\n;     :$default$each nil })\n\n; (defn map [obj func]\n;   (cond\n;     obj.Iterable$proto$map (obj.Iterable$proto$map obj func)\n;     Iterable.$default$map (Iterable.$default$map obj func)\n;     :else (throw \"No suitable implementation of Iterable map$2 found.\")))\n\n; (defn each [obj func]\n;   (cond\n;     obj.Iterable$proto$each (obj.Iterable$proto$each obj func)\n;     Iterable.$default$each (Iterable.$default$each obj func)\n;     :else (throw \"No suitable implementation of Iterable each$2 found.\")))\n";
 
 function Environment (target, interactive) {
 
@@ -5472,7 +5472,7 @@ function amdefine(module, require) {
 
 module.exports = amdefine;
 
-})(require("__browserify_process"),"/node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js")
+})(require("__browserify_process"),"/../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js")
 },{"__browserify_process":28,"path":26}],18:[function(require,module,exports){
 module.exports=module.exports={
   "name": "escodegen",
@@ -7060,13 +7060,14 @@ exports.printString = print_str;
 
 })()
 },{"./core":3,"util":27}],21:[function(require,module,exports){
-var Environment = require('./Environment').Environment;
+var Environment = require('../Environment').Environment;
 
 // INPUT OUTPUT
 
 var target = "browser";
 var mode = "library";
 var interactive = false;
+var minify = false;
 
 function compileTerrible(text) {
   var env = new Environment(target, interactive);
@@ -7090,7 +7091,17 @@ function compileTerrible(text) {
     }
   }
 
-  return { js: env.asJS(mode), log: messages };
+  var js = env.asJS(mode);
+
+  if (minify) {
+    var parsed = UglifyJS.parse(js, {});
+    parsed.figure_out_scope();
+    var compressor = UglifyJS.Compressor({});
+    var compressed = parsed.transform(compressor);
+    js = compressed.print_to_string({beautify: true});
+  }
+
+  return { js: js, log: messages };
 }
 
 var last_compile = null;
@@ -7127,7 +7138,14 @@ document.getElementById('environment-interactive').addEventListener('change',
   function () {
     var el = document.getElementById('environment-interactive');
     interactive = el.checked;
-    console.log("interactive", interactive);
+    doCompile(true);
+  }
+);
+
+document.getElementById('environment-minify').addEventListener('change',
+  function () {
+    var el = document.getElementById('environment-minify');
+    minify = el.checked;
     doCompile(true);
   }
 );
@@ -7200,7 +7218,7 @@ document.getElementById('io-toggle').addEventListener('click', function () {
   document.querySelector('body').setAttribute('class', 'input-output');
 });
 
-},{"./Environment":1}],22:[function(require,module,exports){
+},{"../Environment":1}],22:[function(require,module,exports){
 var JS = require('./JS');
 
 var Terr = exports;

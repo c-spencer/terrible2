@@ -144,3 +144,7 @@
 
 (extend-type Symbol Printable
   (print-str [symb] symb.name))
+
+(extend-type Function Printable
+  (print-str [f]
+    (+ "#fn[" f.name "]")))

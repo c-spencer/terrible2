@@ -525,6 +525,25 @@ builtins = {
     return Terr.For(init, test, update, body);
   },
 
+  "js-for-in": function (opts, left, right) {
+    var walker = opts.walker,
+        env = opts.env;
+
+    env = env.newScope(true, false);
+
+    var walker = walker(env);
+
+    if (!isSymbol(left)) {
+      throw "Left binding in js-for-in must be symbol."
+    }
+
+    var left = walker(core.list(core.symbol('var'), left));
+    var right = walker(right);
+    var body = Terr.Seq(Array.prototype.slice.call(arguments, 3).map(walker));
+
+    return Terr.ForIn(left, right, body);
+  },
+
   // (while (< i 10) (inc i))
 
   "if": function (opts, test, cons, alt) {

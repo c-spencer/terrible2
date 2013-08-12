@@ -82,6 +82,15 @@ exports.ForStatement = function(init, test, update, body) {
   };
 };
 
+exports.ForInStatement = function (left, right, body) {
+  return {
+    type: 'ForInStatement',
+    left: left,
+    right: right,
+    body: body
+  };
+};
+
 exports.FunctionExpression = function(params, body) {
   return {
     type: 'FunctionExpression',

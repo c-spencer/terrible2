@@ -415,6 +415,24 @@ var compilers = {
     }
   },
 
+  ForIn: {
+    fields: ['left', 'right', 'body'],
+    compile: function (node, mode) {
+      if (mode == "expression") {
+        console.log("ForIn not supported in expression position.")
+        throw "ForIn not supported in expression position."
+      }
+
+      var forin_statement = JS.ForInStatement(
+        intoBlock(node.left, "statement"),
+        Terr.CompileToJS(node.right, "expression"),
+        intoBlock(node.body, "statement")
+      )
+
+      return [forin_statement];
+    }
+  },
+
   Throw: {
     fields: ['expression'],
     compile: function (node, mode) {

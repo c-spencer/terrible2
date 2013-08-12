@@ -5,6 +5,10 @@ var codegen = require('escodegen');
 var JS = require('./js');
 var reader = require('./reader');
 var parser = require('./parser');
+var core = require('./core');
+var fs = require('fs');
+
+var terrible_core = "(ns terrible.core)\n\n(def list (lambda [& args]\n  (List.apply nil args)))\n\n(def symbol (lambda [name]\n  (Symbol name)))\n\n(var set-macro\n  (lambda [f]\n    (set! f.$macro true)\n    f))\n\n(def macro (set-macro\n  (lambda [& body]\n    `(set-macro (lambda ~@body)))))\n\n(def defmacro\n  (macro [name & body]\n    `(def ~name (macro ~@body))))\n\n(defmacro fn [& body]\n  `(lambda ~@body))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword [name]\n  (Keyword name))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n\n(defn string? [s]\n  (= (type s) \"string\"))\n\n(defn number? [s]\n  (= (type s) \"number\"))\n\n(defn object? [o]\n  (and (not= nil o)\n       (= (type o) \"object\")))\n\n(defmacro cond [t v & cases]\n  (if (and (keyword? t)\n           (= t.name \"else\"))\n    v\n    (if (> cases.length 0)\n      `(if ~t ~v (cond ~@cases))\n      `(if ~t ~v))))\n\n(defmacro let [bindings & body]\n  (var vars [])\n  (js-for [i 0] (< i bindings.length) (set! i (+ i 2))\n    (var s (get bindings i)\n         v (get bindings (+ i 1)))\n    (vars.push `(var ~s ~v)))\n  `(do ~@vars ~@body))\n\n(defmacro -> [left app & apps]\n  (cond\n    (not app)       left\n    (keyword? app) `(-> (get ~left ~app.name) ~@apps)\n    (list? app)    `(-> (~app.values.0 ~left ~@(app.values.slice 1))\n                        ~@apps)\n    (symbol? app)  `(-> (~app ~left) ~@apps)\n    :else           (throw \"Invalid -> target\")))\n\n(defmacro defprotocol [symb & fns]\n  (let [proto-marker (+ symb.name \"$proto$\")\n        fn-defs (fns.map (fn [list]\n                  (let [n       list.values.0\n                        args    list.values.1\n                        body   (list.values.slice 2)\n                        marker (+ proto-marker n.name)]\n                    `(defn ~n ~args\n                      (if (get ~args.0 ~marker)\n                        ((get ~args.0 ~marker) ~@args)\n                        (do ~@body))))))]\n\n    `(do-noscope\n      (def ~symb ~proto-marker)\n      ~@fn-defs)))\n\n(defmacro extend-type [cls protocol & methods]\n  `(do\n    ~@(methods.map (fn [method]\n      (let [n method.values.0]\n       `(set!\n          (get (get ~cls \"prototype\") (+ ~protocol ~n.name))\n          (fn ~@(method.values.slice 1))))\n      ))))\n\n(defprotocol Iterable\n  (map [obj func]\n    (let [new-obj {}]\n      (js-for-in k obj\n        (if (obj.hasOwnProperty k)\n          (set! (get new-obj k) (func (get obj k) k))))\n      new-obj))\n  (each [obj func]\n    (js-for-in k obj\n      (if (obj.hasOwnProperty k)\n        (func (get obj k) k)))\n    nil))\n\n(extend-type Array Iterable\n  (map [arr func] (arr.map func))\n  (each [arr func] (arr.forEach func)))\n\n(extend-type List Iterable\n  (map [this-list func] (.concat (list) (this-list.values.map func)))\n  (each [this-list func] (this-list.values.forEach func)))\n\n(defprotocol Printable\n  (print-str [obj]\n    (cond\n      (object? obj) (let [parts []]\n                      (each obj (fn [v k]\n                        (parts.push (print-str k))\n                        (parts.push (print-str v))))\n                      (+ \"{\" (parts.join \" \") \"}\"))\n      :else         (JSON.stringify obj))))\n\n(extend-type Array Printable\n  (print-str [arr]\n    (+ \"[\" (.join (map arr print-str) \" \") \"]\")))\n\n(extend-type List Printable\n  (print-str [list]\n    (+ \"(\" (.values.join (map list print-str) \" \") \")\")))\n\n(extend-type Keyword Printable\n  (print-str [kw]\n    (+ \":\" kw.name)))\n\n(extend-type Symbol Printable\n  (print-str [symb] symb.name))\n\n(extend-type Function Printable\n  (print-str [f]\n    (+ \"#fn[\" f.name \"]\")))\n";
 
 function Environment (target, interactive) {
 
@@ -25,11 +29,20 @@ function Environment (target, interactive) {
   this.scope.expose('Function', Function);
   this.scope.expose('Object', Object);
   this.scope.expose('Number', Number);
+  this.scope.expose('String', String);
 
   this.scope.expose('JSON', JSON);
   this.scope.expose('console', console);
 
+  this.scope.expose('List', core.list);
+  this.scope.expose('Symbol', core.symbol);
+  this.scope.expose('Keyword', core.keyword);
+
   this.namespaces = [];
+
+  this.current_namespace = this.getNamespace('terrible.core');
+
+  this.evalText(terrible_core);
 
   this.current_namespace = this.getNamespace('user');
 };
@@ -48,12 +61,15 @@ Environment.prototype.getNamespace = function (name) {
     return ns;
   } else {
     var ns = new Namespace.Namespace(name, this.scope.newScope(true, false));
+    if (name != "terrible.core") {
+      ns.scope.refer("terrible.core", null, this.findNamespace("terrible.core"))
+    }
     this.namespaces.push(ns);
     return ns;
   }
 };
 
-Environment.prototype.evalText = function (text) {
+Environment.prototype.evalText = function (text, error_cb) {
   var forms = this.readSession.readString(text);
 
   var results = [];
@@ -69,14 +85,20 @@ Environment.prototype.evalText = function (text) {
 
       results.push(processed);
 
-      this.current_namespace.ast_nodes =
-        this.current_namespace.ast_nodes.concat(nodes);
+      if (!processed.value || !processed.value.$macro) {
+        this.current_namespace.ast_nodes =
+          this.current_namespace.ast_nodes.concat(nodes);
+      }
     } catch (exception) {
-      results.push({
-        form: form,
-        text: form.$text,
-        value: exception
-      });
+      if (error_cb) {
+        error_cb(form, form.$text, exception);
+      } else {
+        results.push({
+          form: form,
+          text: form.$text,
+          exception: exception
+        });
+      }
     }
   }
 
@@ -122,13 +144,24 @@ Environment.prototype.asJS = function (mode) {
   Terr.INTERACTIVE = this.interactive;
   var js_ast = Terr.CompileToJS(seq, "statement");
 
-  return codegen.generate(JS.Program(js_ast));
+  if (false) { // source map experimenting
+    var result = codegen.generate(JS.Program(js_ast), {
+      sourceMap: "input",
+      sourceMapWithCode: true
+    });
+
+    console.log("map", result.map.toString());
+
+    return result.code;
+  } else {
+    return codegen.generate(JS.Program(js_ast));
+  }
 }
 
 exports.Environment = Environment;
 
 })()
-},{"./js":4,"./namespace":5,"./parser":19,"./reader":20,"./terr-ast":22,"escodegen":6}],2:[function(require,module,exports){
+},{"./core":3,"./js":4,"./namespace":5,"./parser":19,"./reader":20,"./terr-ast":22,"escodegen":6,"fs":25}],2:[function(require,module,exports){
 exports.Identifier = function(name) {
   return {
     type: 'Identifier',
@@ -209,6 +242,15 @@ exports.ForStatement = function(init, test, update, body) {
     init: init,
     test: test,
     update: update,
+    body: body
+  };
+};
+
+exports.ForInStatement = function (left, right, body) {
+  return {
+    type: 'ForInStatement',
+    left: left,
+    right: right,
     body: body
   };
 };
@@ -377,6 +419,18 @@ function List() {
     return new (Function.prototype.bind.apply(List, [null].concat(values)));
   }
 }
+List.prototype.concat = function (arg) {
+  this.values = this.values.concat(arg);
+  return this;
+}
+List.prototype.push = function () {
+  this.values.push.apply(this.values, arguments);
+  return this;
+}
+List.prototype.toString = function () {
+  var vs = this.values.map(function (v) { return v.toString(); });
+  return "(" + vs.join(" ") + ")";
+}
 exports.list = List;
 
 function Symbol(name) {
@@ -480,6 +534,15 @@ exports.ForStatement = function(init, test, update, body) {
     init: init,
     test: test,
     update: update,
+    body: body
+  };
+};
+
+exports.ForInStatement = function (left, right, body) {
+  return {
+    type: 'ForInStatement',
+    left: left,
+    right: right,
     body: body
   };
 };
@@ -640,6 +703,7 @@ function Scope (parent, js_frame) {
   this.parent = parent;
   this.logical_frame = {};
   this.js_frame = js_frame || {};
+  this.ns_references = [];
 }
 
 Scope.prototype.addSymbol = function (name, metadata) {
@@ -659,18 +723,37 @@ Scope.prototype.resolve = function (name) {
   if (this.logical_frame[name]) {
     return this.logical_frame[name];
   } else {
+    for (var i = 0; i < this.ns_references.length; ++i) {
+      var ref = this.ns_references[i];
+
+      if (ref.alias === null) {
+        var ns_resolved = ref.ns.scope.resolve(name);
+        if (ns_resolved) {
+          return ns_resolved;
+        }
+      }
+    }
+
     return this.parent ? this.parent.resolve(name) : false;
   }
+}
+
+Scope.prototype.resolveNamespace = function (alias) {
+  for (var i = 0; i < this.ns_references.length; ++i) {
+    var ref = this.ns_references[i];
+
+    if (ref.alias === alias) {
+      return ref.ns;
+    }
+  }
+
+  return this.parent? this.parent.resolveNamespace(alias) : false;
 }
 
 Scope.prototype.nameClash = function (name) {
   var keys = Object.keys(this.js_frame);
   for (var i = 0; i < keys.length; ++i) {
-    var key = keys[i], entry = this.js_frame[key];
-    if ((entry.js_name && entry.js_name === name) ||
-        (!entry.js_name && key === name)) {
-      return true;
-    }
+    if (keys[i] === name) return true;
   }
 }
 
@@ -724,26 +807,13 @@ Scope.prototype.expose = function (name, value) {
   };
 };
 
-Scope.prototype.refer = function (root, map) {
-
-  var root_name = "refer$" + root.join("$");
-  var root = Terr.Identifier(root_name);
-
-  for (var k in map) {
-    this.logical_frame[k] = {
-      type: 'any',
-      export: false,
-      accessor: Terr.Member(root, Terr.Literal(k)),
-      value: map[k],
-      namespace: root
-    }
+Scope.prototype.refer = function (namespace, alias, ns) {
+  for (var i = 0; i < this.ns_references.length; ++i) {
+    var ref = this.ns_references[i];
+    if (ref.namespace == namespace && ref.alias == alias) return;
   }
 
-  this.logical_frame[root_name] = this.js_frame[root_name] = {
-    type: 'any',
-    accessor: root,
-    value: map
-  };
+  this.ns_references.push({namespace: namespace, alias: alias, ns: ns});
 };
 
 Scope.prototype.exports = function () {
@@ -762,14 +832,18 @@ function Namespace (name, scope) {
   this.scope = scope;
   this.scope.top_level = true;
 
-  this.scope.refer(['terrible', 'core'], require('./core'));
-
   this.ast_nodes = [];
   this.dependent_namespaces = [];
 }
 
 Namespace.prototype.exportsMap = function () {
-  return this.scope.exports().map(function (exported) {
+  return this.scope.exports().filter(function (exported) {
+    if (exported.data.value && exported.data.value.$macro) {
+      return false;
+    } else {
+      return true;
+    }
+  }).map(function (exported) {
     return {
       key: exported.name,
       value: exported.data.accessor
@@ -803,7 +877,7 @@ Namespace.prototype.requiresNamespace = function (ns) {
 exports.Namespace = Namespace;
 exports.Scope = Scope;
 
-},{"./core":3,"./js":4,"./terr-ast":22}],6:[function(require,module,exports){
+},{"./js":4,"./terr-ast":22}],6:[function(require,module,exports){
 (function(global){/*
   Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2012-2013 Michael Ficarra <escodegen.copyright@michael.ficarra.me>
@@ -5417,8 +5491,8 @@ function amdefine(module, require) {
 
 module.exports = amdefine;
 
-})(require("__browserify_process"),"/node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js")
-},{"__browserify_process":27,"path":25}],18:[function(require,module,exports){
+})(require("__browserify_process"),"/../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js")
+},{"__browserify_process":28,"path":26}],18:[function(require,module,exports){
 module.exports=module.exports={
   "name": "escodegen",
   "description": "ECMAScript code generator",
@@ -5624,10 +5698,17 @@ function parseSymbol (symb) {
 
 function resolveSymbol (env, parsed_symbol) {
   if (parsed_symbol.namespace) {
-    var ns = env.env.findNamespace(parsed_symbol.namespace);
+
+    var ns = env.scope.resolveNamespace(parsed_symbol.namespace) ||
+             env.env.findNamespace(parsed_symbol.namespace);
+
     if (!ns) {
       throw "Couldn't find namespace `" + parsed_symbol.namespace + "`"
     }
+
+    // If aliased, updated the parsed namespace.
+    parsed_symbol.namespace = ns.name;
+
     env.env.current_namespace.requiresNamespace(ns);
     var scope = ns.scope;
   } else {
@@ -5635,6 +5716,45 @@ function resolveSymbol (env, parsed_symbol) {
   }
 
   return scope.resolve(mungeSymbol(parsed_symbol.root));
+}
+
+// Shared declaration checks
+function declaration_guard (env, kind, id) {
+  if (!isSymbol(id)) {
+    throw "First argument to " + kind + " must be symbol."
+  }
+
+  var parsed_id = parseSymbol(id.name);
+
+  if (parsed_id.namespace) {
+    throw "Cannot " + kind + " into another namespace."
+  }
+
+  if (parsed_id.parts.length !== 0) {
+    throw "Can't " + kind + " a multi-part id."
+  }
+
+  var munged_name = mungeSymbol(parsed_id.root);
+
+  if (env.scope.logicalScoped(munged_name)) {
+    throw "Cannot re" + kind + " " + id.name
+  }
+
+  return munged_name;
+}
+
+function declaration_val (val, walker, env, name) {
+  if (val !== undefined) {
+    val = walker(env)(val);
+    if (val === null) {
+      return undefined;
+    } else if (val.type == "Fn") {
+      val.id = Terr.Identifier(name);
+    }
+
+    env.scope.update(name, { node: val });
+  }
+  return val;
 }
 
 builtins = {
@@ -5647,8 +5767,11 @@ builtins = {
   'and': makeBinary('&&'),
   '>': makeBinary('>'),
   '>=': makeBinary('>='),
+  '<': makeBinary('<'),
+  '<=': makeBinary('<='),
   '/': makeBinary('/'),
   'instance?': makeBinary('instanceof'),
+  'mod': makeBinary('%'),
 
   'not': makeUnary('!'),
   'xor': makeUnary('~'),
@@ -5672,37 +5795,21 @@ builtins = {
 
   "var": function (opts, id, val) {
     var walker = opts.walker,
-        env = opts.env;
+        env = opts.env,
+        ns_name = env.env.current_namespace.name,
+        decls = [],
+        inputs = Array.prototype.slice.call(arguments, 1);
 
-    if (!isSymbol(id)) {
-      throw "First argument to var must be symbol."
-    }
-
-    var parsed_id = parseSymbol(id.name);
-
-    if (parsed_id.namespace) {
-      throw "Cannot var into another namespace."
-    }
-
-    if (parsed_id.parts.length === 0) {
-      var munged_name = mungeSymbol(parsed_id.root);
-
-      // If there is already a var with the same name in the JS scope, generate a new
-      // name to avoid overwriting it. The scope always returns from the logical stack
-      // not the js stack, so although this clobbers the old js scope information, the
-      // js stack is only needed for the presence check, not the metadata.
-
-      if (env.scope.logicalScoped(munged_name)) {
-        throw "Cannot redeclare var " + id.name
-      }
+    for (var i = 0; i < inputs.length; i += 2) {
+      var id = inputs[i],
+          val = inputs[i + 1],
+          munged_name = declaration_guard(env, "var", id);
 
       if (env.scope.nameClash(munged_name)) {
         var js_name = env.genID(munged_name);
       } else {
         var js_name = munged_name;
       }
-
-      var ns_name = env.env.current_namespace.name;
 
       if (env.scope.top_level) {
         var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
@@ -5718,94 +5825,52 @@ builtins = {
         top_level: env.scope.top_level
       });
 
-      // TOTHINK: Treat value as a new scope?
-
-      if (val !== undefined) {
-        val = walker(env)(val);
-        if (val === null) {
-          return undefined;
-        } else if (val.type == "Fn") {
-          val.id = Terr.Identifier(munged_name);
-          // return val;
-        }
-
-        env.scope.update(munged_name, { node: val });
-      }
+      val = declaration_val(val, walker, env, munged_name);
 
       if (env.scope.top_level) {
-        // interactive set
-        return Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var");
+        decls.push(Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var"));
       } else {
-        return Terr.Var(accessor, val);
+        decls.push([accessor, val]);
       }
+    }
+
+    if (env.scope.top_level) {
+      return Terr.Seq(decls);
     } else {
-      throw "Can't var a multi-part id."
-      // var resolved = env.scope.resolve(id.name());
-
-      // walker = walker(env);
-
-      // return Terr.Assign(walker(id), walker(val));
+      return Terr.Var(decls);
     }
 
   },
 
   "def": function (opts, id, val) {
     var walker = opts.walker,
-        env = opts.env;
+        env = opts.env,
+        munged_name = declaration_guard(env, "def", id),
+        ns_name = env.env.current_namespace.name,
+        munged_ns = mungeSymbol(ns_name.replace(/\./g, '$')) + "$";
 
-    if (!isSymbol(id)) {
-      throw "First argument to def must be symbol."
-    }
-
-    var parsed_id = parseSymbol(id.name);
-
-    if (parsed_id.namespace) {
-      throw "Cannot def into another namespace."
-    }
-
-    if (parsed_id.parts.length === 0) {
-      var ns_name = env.env.current_namespace.name;
-      var munged_name = mungeSymbol(parsed_id.root);
-
-      if (env.scope.logicalScoped(munged_name)) {
-        throw "Cannot redef " + id.name
-      }
-
-      if (env.scope.nameClash(munged_name)) {
-        var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + env.genID(munged_name);
-      } else {
-        var js_name = mungeSymbol(ns_name.replace(/\./g, '$')) + "$" + munged_name;
-      }
-
-      var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
-
-      env.scope.addSymbol(munged_name, {
-        type: 'any',
-        accessor: accessor,
-        js_name: js_name,
-        export: true,
-        top_level: true
-      });
-
-      if (val !== undefined) {
-        val = walker(env)(val);
-        if (val === null) {
-          return undefined;
-        } else if (val.type == "Fn") {
-          val.id = Terr.Identifier(munged_name);
-          // return val;
-        }
-
-        env.scope.update(munged_name, { node: val });
-      }
-
-      return Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var");
+    if (env.scope.nameClash(munged_name)) {
+      var js_name = munged_ns + env.genID(munged_name);
     } else {
-      throw "Can't def a multi-part id."
+      var js_name = munged_ns + munged_name;
     }
+
+    var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
+
+    env.scope.addSymbol(munged_name, {
+      type: 'any',
+      accessor: accessor,
+      js_name: js_name,
+      export: true,
+      top_level: true
+    });
+
+    val = declaration_val(val, walker, env, munged_name);
+
+    return Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var");
   },
 
-  "fn": function (opts, args) {
+  "lambda": function (opts, args) {
 
     var walker = opts.walker,
         env = opts.env;
@@ -5941,6 +6006,20 @@ builtins = {
     return Terr.Seq([]);
   },
 
+  "refer": function (opts, symbol, alias) {
+    var ns = opts.env.env.findNamespace(symbol.name);
+    if (!ns) {
+      throw "Couldn't resolve namespace `" + symbol.name + "`";
+    }
+
+    var alias = alias ? alias.name : null;
+
+    opts.env.scope.refer(symbol.name, alias,
+                         opts.env.env.findNamespace(symbol.name));
+
+    return Terr.Seq([]);
+  },
+
   "set!": function (opts) {
     var walker = opts.walker,
         env = opts.env;
@@ -5970,15 +6049,20 @@ builtins = {
       }
     }
 
-    return Terr.Seq(seq);
+    if (seq.length == 1) {
+      return seq[0];
+    } else {
+      return Terr.Seq(seq);
+    }
+
   },
 
+  // Open a new logical scope, but not a new javascript scope, to allow block
+  // insertion to work as expected.
   "do": function (opts) {
     var walker = opts.walker,
         env = opts.env;
 
-    // Open a new logical scope, but not a new javascript scope, to allow block
-    // insertion to work as expected.
     env = env.newScope(true, false);
 
     walker = walker(env);
@@ -5988,12 +6072,55 @@ builtins = {
     return Terr.Seq(args.map(walker));
   },
 
-  // (jsmacro if [opts test cons alt]
-  //   (var walker (opts.walker opts.env))
-  //   (opts.Terr
-  //     (walker test)
-  //     (if cons (walker cons))
-  //     (if alt (walker alt))))
+  // As do, but no new scope.
+  // stop-gap until def can jump up scopes
+  "do-noscope": function (opts) {
+    var walker = opts.walker(opts.env);
+
+    var args = Array.prototype.slice.call(arguments, 1);
+
+    return Terr.Seq(args.map(walker));
+  },
+
+  // (for [i 0 len 10] (< i len) (set! i (inc i))
+  //    i)
+
+  "js-for": function (opts, init, test, update) {
+    var walker = opts.walker,
+        env = opts.env;
+
+    env = env.newScope(true, false);
+
+    var walker = walker(env);
+
+    var init = walker(core.list(core.symbol('var')).concat(init));
+    var test = walker(test);
+    var update = walker(update);
+    var body = Terr.Seq(Array.prototype.slice.call(arguments, 4).map(walker));
+
+    return Terr.For(init, test, update, body);
+  },
+
+  "js-for-in": function (opts, left, right) {
+    var walker = opts.walker,
+        env = opts.env;
+
+    env = env.newScope(true, false);
+
+    var walker = walker(env);
+
+    if (!isSymbol(left)) {
+      throw "Left binding in js-for-in must be symbol."
+    }
+
+    var left = walker(core.list(core.symbol('var'), left));
+    var right = walker(right);
+    var body = Terr.Seq(Array.prototype.slice.call(arguments, 3).map(walker));
+
+    return Terr.ForIn(left, right, body);
+  },
+
+  // (while (< i 10) (inc i))
 
   "if": function (opts, test, cons, alt) {
     var walker = opts.walker,
@@ -6001,8 +6128,8 @@ builtins = {
 
     walker = walker(env);
 
-    return Terr.If(walker(test), cons ? walker(cons) : undefined,
-                                 alt ? walker(alt) : undefined);
+    return Terr.If(walker(test), cons !== undefined ? walker(cons) : undefined,
+                                 alt !== undefined ? walker(alt) : undefined);
   },
 
   ".": function (opts, target, member) {
@@ -6065,6 +6192,23 @@ builtins = {
 
   "quote": function (opts, arg) {
     return opts.walker(opts.env.setQuoted("quote"))(arg);
+  },
+
+  "unquote": function (opts, arg) {
+    return opts.walker(opts.env.setQuoted(false))(arg);
+  },
+
+  "unquote-splicing": function (opts, arg) {
+    if (opts.env.quoted != "syntax") {
+      throw "Cannot call unquote-splicing outside of syntax-quote."
+    }
+    var result = opts.walker(opts.env.setQuoted(false))(arg);
+
+    return Terr.Splice(result);
+  },
+
+  "syntax-quote": function (opts, arg) {
+    return opts.walker(opts.env.setQuoted("syntax"))(arg);
   }
 }
 
@@ -6102,49 +6246,70 @@ function compile_eval (node, env) {
   return ret;
 }
 
-var macros = {
-  defn: function (name) {
-    var body = Array.prototype.slice.call(arguments, 1);
-    return core.list(
-      core.symbol('def'),
-      name,
-      core.list.apply(null, [core.symbol('fn')].concat(body))
-    )
-  },
-
-  "setfn!": function (name) {
-    var body = Array.prototype.slice.call(arguments, 1);
-    return core.list(
-      core.symbol('set!'),
-      name,
-      core.list.apply(null, [core.symbol('fn')].concat(body))
-    )
-  },
-
-  "varfn": function (name) {
-    var body = Array.prototype.slice.call(arguments, 1);
-    return core.list(
-      core.symbol('var'),
-      name,
-      core.list.apply(null, [core.symbol('fn')].concat(body))
-    )
-  }
+function loc (node, form) {
+  if (node.loc) { form.loc = node.loc; }
+  return form;
 }
 
 walk_handlers = {
   "List": function (node, walker, env) {
 
-    if (env.quoted) {
-      var quoted_walker = walker(env);
-      var unquoted_walker = walker(env.setQuoted(false));
-      return Terr.Call(
-        unquoted_walker(core.symbol('list')),
-        node.values.map(quoted_walker)
-      )
+    // easier bound version
+    var _loc = function (form) {
+      return loc(node, form);
     }
 
     var head = node.values[0];
     var tail = node.values.slice(1);
+
+    if (env.quoted) {
+
+      if (head && isSymbol(head) && (head.name == 'unquote' ||
+                                     head.name == "unquote-splicing")) {
+
+      } else {
+        var quoted_walker = walker(env);
+        var unquoted_walker = walker(env.setQuoted(false));
+
+        var list_symb = unquoted_walker(core.symbol('terrible.core/list'));
+        var values = node.values.map(quoted_walker);
+
+        if (env.quoted == "syntax") {
+
+          var args = [];
+          var root = null;
+
+          var pack_args = function () {
+            if (!root) {
+              root = Terr.Call(list_symb, args);
+              args = [];
+            } else {
+              root = Terr.Call(Terr.Member(root, Terr.Literal("push")), args);
+              args = [];
+            }
+          }
+
+          values.forEach(function (v) {
+            if (v.type == "Splice") {
+              pack_args();
+              root = Terr.Call(Terr.Member(root, Terr.Literal("concat")), [v.value]);
+            } else {
+              args.push(v);
+            }
+          });
+          if (!root || args.length > 0) {
+            pack_args();
+          }
+
+          return _loc(root);
+        } else {
+          return _loc(Terr.Call(
+            list_symb,
+            values
+          ));
+        }
+      }
+    }
 
     if (head && isSymbol(head)) {
 
@@ -6159,27 +6324,31 @@ walk_handlers = {
           target = Terr.Member(target, walker(p));
         });
 
-        return Terr.Call(target, tail);
+        return _loc(Terr.Call(target, tail));
       }
 
       if (parsed_head.parts.length > 0) {
         walker = walker(env);
-        var ret = Terr.Call(walker(head), tail.map(walker))
-        return ret;
+        return _loc(Terr.Call(walker(head), tail.map(walker)));
       }
 
       var name = parsed_head.root;
 
       if (builtins[name]) {
-        return builtins[name].apply(null, [{
+        return _loc(builtins[name].apply(null, [{
           walker: walker,
           env: env
-        }].concat(tail));
-      } else if (macros[name]) {
-        return walker(env)(macros[name].apply(null, tail));
+        }].concat(tail)));
       }
 
       var resolved = resolveSymbol(env, parsed_head);
+
+      if (resolved.value) {
+        var m = resolved.value;
+        if (m.$macro === true && typeof m === "function") {
+          return _loc(walker(env)(m.apply(null, tail)));
+        }
+      }
 
       if (resolved === false) {
         throw "Couldn't resolve " + name;
@@ -6196,7 +6365,7 @@ walk_handlers = {
         if (env.env.interactive) {
           // arities could change out underneath us, so don't specialise here
         } else if (fn_node.arities.length == 1) { // mono-arity, no sub-dispatch
-          if (fn_node.variadic) {
+          if (fn_node.variadic !== null) {
             if (tail.length < fn_node.variadic) {
               throw "Function `" + name + "` expects at least " + fn_node.variadic + " arguments, but " + tail.length + " provided."
             }
@@ -6222,7 +6391,11 @@ walk_handlers = {
         throw "Cannot call " + resolved.type + " `" + name + "` as function."
       }
 
-      return Terr.Call(target || walker(head), tail.map(walker));
+      return _loc(Terr.Call(loc(head, target || walker(head)),
+                            tail.map(walker)));
+    } else if (head && isList(head)) {
+      var walker = walker(env);
+      return _loc(Terr.Call(walker(head), tail.map(walker)));
     } else {
       throw "Cannot call `" + JSON.stringify(head) + "` as function."
     }
@@ -6230,12 +6403,30 @@ walk_handlers = {
 
   "Symbol": function (node, walker, env) {
 
-    if (env.quoted) {
+    if (env.quoted == "quote" || builtins[node.name]) {
       walker = walker(env.setQuoted(false));
-      return Terr.Call(
-        walker(core.symbol('symbol')),
-        [node.name]
-      )
+      return loc(node, Terr.Call(
+        walker(core.symbol('terrible.core/symbol')),
+        [Terr.Literal(node.name)]
+      ));
+    } else if (env.quoted == "syntax") {
+
+      var parsed_node = parseSymbol(node.name);
+      var resolved = resolveSymbol(env, parsed_node);
+
+      if (!resolved) {
+        console.trace();
+        throw "Couldn't resolve `" + node.name + "`";
+      }
+
+      walker = walker(env.setQuoted(false));
+
+      var ns = parsed_node.namespace || env.env.current_namespace.name;
+
+      return loc(node, Terr.Call(
+        walker(core.symbol('terrible.core/symbol')),
+        [Terr.Literal(ns + "/" + [parsed_node.root].concat(parsed_node.parts).join("."))]
+      ));
     }
 
     var parsed_node = parseSymbol(node.name);
@@ -6262,11 +6453,11 @@ walk_handlers = {
       root = Terr.Member(root, walker(parsed_node.parts[i]));
     }
 
-    return root;
+    return loc(node, root);
   },
 
   "Keyword": function (node, walker, env) {
-    return walker(env)(core.list("keyword", node.toString()));
+    return walker(env)(core.list(core.symbol("terrible.core/keyword"), node.toString()));
 
     // Terr.Call(
     //   Terr.Member(
@@ -6412,6 +6603,19 @@ Buffer.prototype.truncate = function () {
 
 Buffer.prototype.remaining = function () {
   return this.string.substring(this.pos);
+}
+
+Buffer.prototype.locationFromState = function (start_state) {
+  return {
+    start: {
+      line: start_state.line,
+      column: start_state.col
+    },
+    end: {
+      line: this.line,
+      column: this.col
+    }
+  }
 }
 
 // Reader
@@ -6655,9 +6859,9 @@ fnReader = function (buffer, openparen) {
   this.ARG_ENV = originalENV;
 
   if (form.values[0] && !(form.values[0] instanceof core.symbol)) {
-    return core.list.apply(null, [core.symbol('fn'), args].concat(form.values));
+    return core.list.apply(null, [core.symbol('lambda'), args].concat(form.values));
   } else {
-    return core.list(core.symbol('fn'), args, form);
+    return core.list(core.symbol('lambda'), args, form);
   }
 }
 
@@ -6693,11 +6897,24 @@ Reader.prototype.isTerminatingMacro = function (ch) {
   return this.macros[ch] && ch != '#' && ch != '\'' && ch != '%'
 }
 
+function annotateLocation (form, buffer, start_state) {
+  if (form !== null && typeof form === "object") {
+    form.loc = buffer.locationFromState(start_state);
+  }
+  return form;
+}
+
 Reader.prototype.read = function (buffer) {
   while (true) {
     var ch, macro;
 
-    while (this.isWhitespace(ch = buffer.read1()));
+    var start_state = buffer.save();
+    var ch = buffer.read1();
+
+    while (this.isWhitespace(ch)) {
+      start_state = buffer.save();
+      ch = buffer.read1();
+    }
 
     if (this.isDigit(ch)) {
       return this.readNumber(buffer, ch);
@@ -6708,7 +6925,7 @@ Reader.prototype.read = function (buffer) {
       if (ret == buffer) {
         continue;
       } else {
-        return ret;
+        return annotateLocation(ret, buffer, start_state);
       }
     }
 
@@ -6717,13 +6934,13 @@ Reader.prototype.read = function (buffer) {
       var ch2 = buffer.read1();
       if (this.isDigit(ch2)) {
         var n = this.readNumber(buffer, ch2);
-        return core.list(core.symbol(ch), n);
+        return annotateLocation(core.list(core.symbol(ch), n), buffer, start_state);
       } else {
         buffer.restore(buffer_state);
       }
     }
 
-    return this.readToken(buffer, ch);
+    return annotateLocation(this.readToken(buffer, ch), buffer, start_state);
   }
 }
 
@@ -6890,30 +7107,54 @@ exports.Reader = Reader
 exports.printString = print_str;
 
 })()
-},{"./core":3,"util":26}],21:[function(require,module,exports){
-var Environment = require('./Environment').Environment;
+},{"./core":3,"util":27}],21:[function(require,module,exports){
+var Environment = require('../Environment').Environment;
 
 // INPUT OUTPUT
 
 var target = "browser";
 var mode = "library";
 var interactive = false;
+var minify = false;
 
 function compileTerrible(text) {
   var env = new Environment(target, interactive);
   var messages = [];
   env.scope.expose('print', function (v) {
-    messages.push("> " + v);
+    // Somewhat messy reach-in
+    var scope = env.findNamespace('terrible.core').scope;
+    var printer = scope.resolve('print_str');
+    if (printer && printer.value) {
+      messages.push("> " + printer.value(v));
+    }
   });
 
   try {
-    env.evalText(text);
+    env.evalText(text, function (form, source, exc) {
+      messages.push("! " + source.trim());
+      messages.push("! " + (exc.message ? exc.message : exc));
+      if (exc.stack) {
+        messages.push("! " + exc.stack);
+      }
+    });
   } catch (exc) {
     messages.push("! " + (exc.message ? exc.message : exc));
-    messages.push(exc.stack ? ("! " + exc.stack) : "");
+    if (exc.stack) {
+      messages.push("! " + exc.stack);
+    }
   }
 
-  return { js: env.asJS(mode), log: messages };
+  var js = env.asJS(mode);
+
+  if (minify) {
+    var parsed = UglifyJS.parse(js, {});
+    parsed.figure_out_scope();
+    var compressor = UglifyJS.Compressor({});
+    var compressed = parsed.transform(compressor);
+    js = compressed.print_to_string({beautify: true});
+  }
+
+  return { js: js, log: messages };
 }
 
 var last_compile = null;
@@ -6950,7 +7191,14 @@ document.getElementById('environment-interactive').addEventListener('change',
   function () {
     var el = document.getElementById('environment-interactive');
     interactive = el.checked;
-    console.log("interactive", interactive);
+    doCompile(true);
+  }
+);
+
+document.getElementById('environment-minify').addEventListener('change',
+  function () {
+    var el = document.getElementById('environment-minify');
+    minify = el.checked;
     doCompile(true);
   }
 );
@@ -6961,7 +7209,7 @@ doCompile();
 
 window.replEnvironment = new Environment("browser", false);
 
-function addResult(form, value) {
+function addResult(form, value, result_class) {
   var el = document.getElementById('evaled-forms');
   var new_el = document.createElement('div');
   new_el.setAttribute('class', 'evaled');
@@ -6972,7 +7220,7 @@ function addResult(form, value) {
   new_el.appendChild(form_el);
 
   var value_el = document.createElement('pre');
-  value_el.setAttribute('class', 'value');
+  value_el.setAttribute('class', result_class);
   value_el.innerText = value;
   new_el.appendChild(value_el);
 
@@ -6985,7 +7233,11 @@ function replEval(text) {
   var results = replEnvironment.evalText(text + "\n");
 
   results.forEach(function (result) {
-    addResult(result.text.trim(), result.value);
+    if (result.exception) {
+      addResult(result.text.trim(), result.exception, "value exception");
+    } else {
+      addResult(result.text.trim(), result.value, "value");
+    }
   });
 }
 
@@ -7005,9 +7257,9 @@ document.getElementById('repl-input').addEventListener('keypress', function (e) 
   }
 })
 
-replEval("(+ 1 2)");
-replEval("(defn inc [i] (+ i 1))");
-replEval("(inc 5)");
+// replEval("(+ 1 2)");
+// replEval("(defn inc [i] (+ i 1))");
+// replEval("(inc 5)");
 
 // Toggles
 
@@ -7019,12 +7271,25 @@ document.getElementById('io-toggle').addEventListener('click', function () {
   document.querySelector('body').setAttribute('class', 'input-output');
 });
 
-},{"./Environment":1}],22:[function(require,module,exports){
+},{"../Environment":1}],22:[function(require,module,exports){
 var JS = require('./JS');
 
 var Terr = exports;
 
 Terr.INTERACTIVE = false;
+
+function intoBlock (node, mode) {
+  if (node !== undefined) {
+    var r = Terr.CompileToJS(node, mode);
+    if (r.length == 1) {
+      return r[0];
+    } else {
+      return JS.Block(r);
+    }
+  } else {
+    return undefined;
+  }
+}
 
 var compilers = {
   Fn: {
@@ -7159,7 +7424,7 @@ var compilers = {
   Identifier: {
     fields: ['name'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.Identifier(node.name), mode);
+      return ExpressionToMode(loc(node, JS.Identifier(node.name)), mode);
     }
   },
 
@@ -7167,7 +7432,8 @@ var compilers = {
     fields: ['namespace', 'name', 'js_name'],
     compile: function (node, mode) {
       if (!Terr.INTERACTIVE) {
-        return compilers.Identifier.compile({name: node.js_name}, mode);
+        return compilers.Identifier.compile(
+          loc(node, {name: node.js_name}), mode);
       }
 
       return Terr.CompileToJS(Terr.Call(
@@ -7183,15 +7449,14 @@ var compilers = {
     compile: function (node, mode) {
       if (!Terr.INTERACTIVE) {
         if (node.declaration == "var") {
-          return compilers.Var.compile({
-            symbol: Terr.Identifier(node.js_name),
-            expression: node.value
-          }, mode);
+          return compilers.Var.compile(loc(node, {
+            pairs: [[Terr.Identifier(node.js_name), node.value]]
+          }), mode);
         } else {
-          return compilers.Assign.compile({
+          return compilers.Assign.compile(loc(node, {
             left: Terr.Identifier(node.js_name),
             right: node.value
-          }, mode);
+          }), mode);
         }
       }
 
@@ -7225,11 +7490,18 @@ var compilers = {
   },
 
   Var: {
-    fields: ['symbol', 'expression'],
+    fields: ['pairs'],
     compile: function (node, mode) {
-      var symb = Terr.CompileToJS(node.symbol, "expression");
-      var expr = Terr.CompileToJS(node.expression, "expression");
-      var decl = JS.VariableDeclaration([JS.VariableDeclarator(symb, expr)]);
+
+      var symb, expr;
+
+      var mapped = node.pairs.map(function (pair) {
+        symb = Terr.CompileToJS(pair[0], "expression");
+        expr = Terr.CompileToJS(pair[1], "expression");
+        return JS.VariableDeclarator(symb, expr);
+      });
+
+      var decl = JS.VariableDeclaration(mapped);
 
       if (mode == "expression") {
         return expr;
@@ -7248,12 +7520,12 @@ var compilers = {
 
       if (mode == "expression") {
         return JS.ConditionalExpression(test,
-          node.cons ? JS.Block(Terr.CompileToJS(node.cons, "expression")) : undefined,
-          node.alt ? JS.Block(Terr.CompileToJS(node.alt, "expression")) : undefined)
+          node.cons ? Terr.CompileToJS(node.cons, "expression") : undefined,
+          node.alt ? Terr.CompileToJS(node.alt, "expression") : JS.Identifier("undefined"))
       } else if (mode == "statement" || mode == "return") {
         return [JS.IfStatement(test,
-                  node.cons ? JS.Block(Terr.CompileToJS(node.cons, mode)) : undefined,
-                  node.alt ? JS.Block(Terr.CompileToJS(node.alt, mode)) : undefined)]
+                  intoBlock(node.cons, mode),
+                  intoBlock(node.alt, mode))]
       }
     }
   },
@@ -7323,55 +7595,55 @@ var compilers = {
   Assign: {
     fields: ['left', 'right'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.AssignmentExpression(
+      return ExpressionToMode(loc(node, JS.AssignmentExpression(
         Terr.CompileToJS(node.left, "expression"),
         "=",
         Terr.CompileToJS(node.right, "expression")
-      ), mode);
+      )), mode);
     }
   },
 
   Binary: {
     fields: ['left', 'op', 'right'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.BinaryExpression(
+      return ExpressionToMode(loc(node, JS.BinaryExpression(
         Terr.CompileToJS(node.left, "expression"),
         node.op,
         Terr.CompileToJS(node.right, "expression")
-      ), mode);
+      )), mode);
     }
   },
 
   Unary: {
     fields: ['op', 'expr'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.UnaryExpression(
+      return ExpressionToMode(loc(node, JS.UnaryExpression(
         node.op,
         Terr.CompileToJS(node.expr, "expression")
-      ), mode);
+      )), mode);
     }
   },
 
   Call: {
     fields: ['target', 'args'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.CallExpression(
+      return ExpressionToMode(loc(node, JS.CallExpression(
         Terr.CompileToJS(node.target, "expression"),
         node.args.map(function (a) {
           return Terr.CompileToJS(a, "expression");
         })
-      ), mode)
+      )), mode);
     }
   },
 
   Arr: {
     fields: ['values'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.ArrayExpression(
+      return ExpressionToMode(loc(node, JS.ArrayExpression(
         node.values.map(function (a) {
           return Terr.CompileToJS(a, "expression");
         })
-      ), mode);
+      )), mode);
     }
   },
 
@@ -7381,7 +7653,8 @@ var compilers = {
       if (mode == "expression") {
         throw "Return in expression position? Is this real?"
       }
-      return [JS.Return(Terr.CompileToJS(node.expression, "expression"))];
+      return [loc(node,
+                  JS.Return(Terr.CompileToJS(node.expression, "expression")))];
     }
   },
 
@@ -7395,7 +7668,70 @@ var compilers = {
         })
       ), mode);
     }
+  },
+
+  For: {
+    fields: ['init', 'test', 'update', 'body'],
+    compile: function (node, mode) {
+      if (mode == "expression") {
+        console.log("For not supported in expression position.")
+        throw "For not supported in expression position."
+      }
+
+      var for_statement = JS.ForStatement(
+        intoBlock(node.init, "statement"),
+        Terr.CompileToJS(node.test, "expression"),
+        Terr.CompileToJS(node.update, "expression"),
+        intoBlock(node.body, "statement")
+      )
+
+      return [for_statement];
+    }
+  },
+
+  ForIn: {
+    fields: ['left', 'right', 'body'],
+    compile: function (node, mode) {
+      if (mode == "expression") {
+        console.log("ForIn not supported in expression position.")
+        throw "ForIn not supported in expression position."
+      }
+
+      var forin_statement = JS.ForInStatement(
+        intoBlock(node.left, "statement"),
+        Terr.CompileToJS(node.right, "expression"),
+        intoBlock(node.body, "statement")
+      )
+
+      return [forin_statement];
+    }
+  },
+
+  Throw: {
+    fields: ['expression'],
+    compile: function (node, mode) {
+      var statement = JS.ThrowStatement(Terr.CompileToJS(node.expression, "expression"));
+      if (mode == "expression") {
+        return JS.CallExpression(JS.FunctionExpression([], [statement]), []);
+      } else {
+        return [statement];
+      }
+    }
+  },
+
+  Splice: {
+    fields: ['value'],
+    compile: function (node, mode) {
+      throw "Cannot compile Splice to JS, should be stripped by parser."
+    }
   }
+}
+
+function loc (node, js) {
+  if (node.loc) {
+    js.loc = node.loc;
+  }
+  return js;
 }
 
 function ExpressionToMode (node, mode) {
@@ -7430,6 +7766,7 @@ Terr.CompileToJS = function (ast, mode) {
     return compilers[ast.type].compile(ast, mode);
   } else {
     console.trace();
+    console.log(ast);
     throw "Implement Compiler for " + ast.type;
   }
 }
@@ -7656,7 +7993,10 @@ EventEmitter.prototype.listeners = function(type) {
 };
 
 })(require("__browserify_process"))
-},{"__browserify_process":27}],25:[function(require,module,exports){
+},{"__browserify_process":28}],25:[function(require,module,exports){
+// nothing to see here... no file methods for the browser
+
+},{}],26:[function(require,module,exports){
 (function(process){function filter (xs, fn) {
     var res = [];
     for (var i = 0; i < xs.length; i++) {
@@ -7834,7 +8174,7 @@ exports.relative = function(from, to) {
 };
 
 })(require("__browserify_process"))
-},{"__browserify_process":27}],26:[function(require,module,exports){
+},{"__browserify_process":28}],27:[function(require,module,exports){
 var events = require('events');
 
 exports.isArray = isArray;
@@ -8187,7 +8527,7 @@ exports.format = function(f) {
   return str;
 };
 
-},{"events":24}],27:[function(require,module,exports){
+},{"events":24}],28:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};

@@ -11,6 +11,9 @@ function Scope (parent, js_frame) {
 }
 
 Scope.prototype.addSymbol = function (name, metadata) {
+  if (!metadata.metadata) {
+    metadata.metadata = {};
+  }
   this.logical_frame[name] = metadata;
   this.js_frame[name] = metadata;
 }

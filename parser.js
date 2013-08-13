@@ -83,7 +83,18 @@ builtins = {
       if (parsed_id.namespace) { throw "Cannot var bind into another namespace." }
       if (parsed_id.parts.length > 0) { throw "Cannot var bind a multi-part id." }
 
-      if (env.scope.logicalScoped(munged_name)) {
+      if (metadata.external) {
+        // expose an outside global var
+
+        env.scope.addSymbol(munged_name, {
+          type: 'any',
+          accessor: Terr.Identifier(munged_name),
+          metadata: metadata
+        });
+
+        // no val associated, so backtrack one index
+        i = i - 1;
+      } else if (env.scope.logicalScoped(munged_name)) {
         // Just assign into the existing var
 
         var resolved = env.scope.resolve(munged_name);
@@ -180,9 +191,7 @@ builtins = {
             var node = Terr.Identifier(munged_name);
             fn_env.scope.addSymbol(munged_name, {
               type: 'any',
-              implicit: true,
-              accessor: node,
-              metadata: {}
+              accessor: node
             });
             formal_args.push(node);
           }
@@ -192,16 +201,12 @@ builtins = {
       }
 
       fn_env.scope.addSymbol('arguments', {
-        type: 'any',
-        implicit: true,
-        accessor: Terr.Identifier('arguments'),
-        metadata: {}
+        type: 'Arguments',
+        accessor: Terr.Identifier('arguments')
       });
       fn_env.scope.addSymbol('this', {
-        type: 'any',
-        implicit: true,
-        accessor: Terr.Identifier('this'),
-        metadata: {}
+        type: 'Object',
+        accessor: Terr.Identifier('this')
       });
 
       if (rest_arg) {
@@ -254,32 +259,6 @@ builtins = {
     }
 
     return Terr.Fn(arity_map, arities, variadic);
-  },
-
-  "declare": function (opts) {
-    var walker = opts.walker,
-        env = opts.env;
-
-    var symbs = Array.prototype.slice.call(arguments, 1);
-
-    symbs.forEach(function (symb) {
-      var parsed_symb = symb.parse();
-
-      if (parsed_symb.parts.length > 0 || parsed_symb.namespace) {
-        throw "Cannot declare " + symb.name
-      }
-
-      var munged = mungeSymbol(parsed_symb.root);
-      env.scope.addSymbol(munged, {
-        type: 'any',
-        export: false,
-        external: true,
-        accessor: Terr.Identifier(munged),
-        metadata: {}
-      });
-    });
-
-    return Terr.Seq([]);
   },
 
   "ns": function (opts, ns) {

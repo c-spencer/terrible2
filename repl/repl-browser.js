@@ -8,7 +8,7 @@ var parser = require('./parser');
 var core = require('./core');
 var fs = require('fs');
 
-var terrible_core = "(ns terrible.core)\n\n; Required bindings assumed by macros\n\n(var ^{:private false} list (lambda [& args]\n  (List.apply nil args)))\n\n(var ^{:private false} symbol (lambda [name]\n  (Symbol name)))\n\n(var ^{:private false} keyword (lambda [name]\n  (Keyword name)))\n\n(var ^{:terr-macro true :private false} def (lambda [opts id val]\n  (set! id.$metadata (opts.extend id.$metadata {:private false}))\n  (opts.builtins.var opts id val)))\n\n(def ^:terr-macro quote\n  (lambda [opts arg]\n    ((opts.walker (opts.env.setQuoted \"quote\")) arg)))\n\n(def ^:terr-macro syntax-quote\n  (lambda [opts arg]\n    ((opts.walker (opts.env.setQuoted \"syntax\")) arg)))\n\n(def ^:terr-macro unquote\n  (lambda [opts arg]\n    ((opts.walker (opts.env.setQuoted false)) arg)))\n\n(def ^:macro fn\n  (lambda [& body]\n    `(lambda ~@body)))\n\n(def ^:macro defmacro\n  (fn [name & body]\n    (var macro-name (symbol name.name))\n    (set! macro-name.$metadata {:macro true})\n    `(def ~macro-name (fn ~@body))))\n\n(def ^:macro terr-macro\n  (fn [name & body]\n    (var macro-name (symbol name.name))\n    (set! macro-name.$metadata {:terr-macro true})\n    `(def ~macro-name (fn ~@body))))\n\n; Useful utilities\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n; js operators\n\n(defmacro binary-operator [symb op]\n  `(terr-macro ~symb [opts# ~'& args#]\n    (~'.reduce (args#.map (opts#.walker opts#.env))\n      (fn [left# right#] (opts#.Terr.Binary left# ~op right#)))))\n\n(defmacro unary-operator [symb op]\n  `(terr-macro ~symb [opts# arg#]\n    (opts#.Terr.Unary ~op ((opts#.walker opts#.env) arg#))))\n\n(binary-operator + \"+\")\n(binary-operator == \"===\")\n(binary-operator ==? \"==\")\n(binary-operator - \"-\")\n(binary-operator not== \"!==\")\n(binary-operator not==? \"!=\")\n(binary-operator or \"||\")\n(binary-operator and \"&&\")\n(binary-operator > \">\")\n(binary-operator >= \">=\")\n(binary-operator < \"<\")\n(binary-operator <= \"<=\")\n(binary-operator / \"/\")\n(binary-operator instance? \"instanceof\")\n(binary-operator mod \"%\")\n\n(unary-operator not \"!\")\n(unary-operator xor \"~\")\n(unary-operator type \"typeof\")\n\n; Type checks\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n\n(defn string? [s]\n  (== (type s) \"string\"))\n\n(defn number? [s]\n  (== (type s) \"number\"))\n\n(defn object? [o]\n  (and (not== nil o)\n       (== (type o) \"object\")))\n\n(defn vector? [v]\n  (Array.isArray v))\n\n; Core terr macros\n\n(terr-macro if [opts test cons alt]\n  (var walker (opts.walker opts.env))\n  (opts.Terr.If (walker test) (walker cons) (walker alt)))\n\n; Open a new logical scope, but not a new javascript scope, to allow block\n; insertion to work as expected.\n(terr-macro do [opts & body]\n  (var walker (opts.walker (opts.env.newScope true false)))\n  (opts.Terr.Seq (body.map walker)))\n\n; As do, but no new scope.\n; stop-gap until public vars can jump up scopes\n(terr-macro do-noscope [opts & body]\n  (var walker (opts.walker opts.env))\n  (opts.Terr.Seq (body.map walker)))\n\n(terr-macro get [opts target arg]\n  (var walker (opts.walker opts.env))\n  (opts.Terr.Member (walker target) (walker arg)))\n\n(terr-macro return [opts arg]\n  (opts.Terr.Return ((opts.walker opts.env) arg)))\n\n(terr-macro new [opts callee & args]\n  (var walker (opts.walker opts.env))\n  (opts.Terr.New (walker callee) (args.map walker)))\n\n(terr-macro throw [opts arg]\n  (opts.Terr.Throw ((opts.walker opts.env) arg)))\n\n; Refer a namespace into scope\n(terr-macro refer [opts symb alias]\n  (opts.env.scope.refer\n    symb.name\n    (if alias alias.name nil)\n    (do\n      (var ns (opts.env.env.findNamespace symb.name))\n      (if ns ns\n        (throw (+ \"Couldn't resolve namespace `\" symb.name \"`\")))))\n\n  (opts.Terr.Seq []))\n\n(terr-macro js-for [opts init test update & body]\n  (var env (opts.env.newScope true false)\n       walker (opts.walker env))\n\n  (opts.Terr.For\n    (walker `(var ~@init))\n    (walker test)\n    (walker update)\n    (opts.Terr.Seq (body.map walker))))\n\n(terr-macro js-for-in [opts left right & body]\n  (var env (opts.env.newScope true false)\n       walker (opts.walker env))\n\n  (if (not (symbol? left))\n    (throw \"Left binding in js-for-in must be a symbol.\"))\n\n  (opts.Terr.ForIn\n    (walker `(var ~left))\n    (walker right)\n    (opts.Terr.Seq (body.map walker))))\n\n; Core library\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defmacro when [cond & body]\n  `(if ~cond (do ~@body)))\n\n(defmacro cond [t v & cases]\n  (if (and (keyword? t)\n           (== t.name \"else\"))\n    v\n    (if (> cases.length 0)\n      `(if ~t ~v (cond ~@cases))\n      `(if ~t ~v))))\n\n(defmacro let [bindings & body]\n  (var vars [])\n  (js-for [i 0] (< i bindings.length) (set! i (+ i 2))\n    (var s (get bindings i)\n         v (get bindings (+ i 1)))\n    (vars.push `(var ~s ~v)))\n  `(do ~@vars ~@body))\n\n(defmacro -> [left app & apps]\n  (cond\n    (not app)       left\n    (keyword? app) `(-> (get ~left ~app.name) ~@apps)\n    (list? app)    `(-> (~app.values.0 ~left ~@(app.values.slice 1))\n                        ~@apps)\n    (symbol? app)  `(-> (~app ~left) ~@apps)\n    :else           (throw \"Invalid -> target\")))\n\n(defmacro defprotocol [symb & fns]\n  (let [proto-marker (+ symb.name \"$proto$\")\n        fn-defs (fns.map (fn [list]\n                  (let [n       list.values.0\n                        args    list.values.1\n                        body   (list.values.slice 2)\n                        marker (+ proto-marker n.name)]\n                    `(defn ~n ~args\n                      (if (get ~args.0 ~marker)\n                        ((get ~args.0 ~marker) ~@args)\n                        (do ~@body))))))]\n\n    `(do-noscope\n      (def ~symb ~proto-marker)\n      ~@fn-defs)))\n\n(defmacro extend-type [cls protocol & methods]\n  `(do\n    ~@(methods.map (fn [method]\n      (let [n method.values.0]\n       `(set!\n          (get (get ~cls \"prototype\") (+ ~protocol ~n.name))\n          (fn ~@(method.values.slice 1))))\n      ))))\n\n(defprotocol Equality\n  (= [left right]\n    (== left right)))\n\n; Avoid extra dispatch for not=\n(defn not= [left right]\n  (not (= left right)))\n\n(extend-type Keyword Equality\n  (= [left right]\n    (and (keyword? right)\n         (== left.name right.name))))\n\n(extend-type Symbol Equality\n  (= [left right]\n    (and (symbol? right)\n         (== left.name right.name))))\n\n(defprotocol Iterable\n  (map [obj func]\n    (let [new-obj {}]\n      (js-for-in k obj\n        (if (obj.hasOwnProperty k)\n          (set! (get new-obj k) (func (get obj k) k))))\n      new-obj))\n  (each [obj func]\n    (js-for-in k obj\n      (if (obj.hasOwnProperty k)\n        (func (get obj k) k)))\n    nil))\n\n(extend-type Array Iterable\n  (map [arr func] (arr.map func))\n  (each [arr func] (arr.forEach func)))\n\n(extend-type List Iterable\n  (map [this-list func] (.concat (list) (this-list.values.map func)))\n  (each [this-list func] (this-list.values.forEach func)))\n\n(defprotocol Printable\n  (print-str [obj]\n    (cond\n      (object? obj) (let [parts []]\n                      (each obj (fn [v k]\n                        (parts.push (print-str k))\n                        (parts.push (print-str v))))\n                      (+ \"{\" (parts.join \" \") \"}\"))\n      :else         (JSON.stringify obj))))\n\n(extend-type Array Printable\n  (print-str [arr]\n    (+ \"[\" (.join (map arr print-str) \" \") \"]\")))\n\n(extend-type List Printable\n  (print-str [list]\n    (+ \"(\" (.values.join (map list print-str) \" \") \")\")))\n\n(extend-type Keyword Printable\n  (print-str [kw]\n    (+ \":\" kw.name)))\n\n(extend-type Symbol Printable\n  (print-str [symb] symb.name))\n\n(extend-type Function Printable\n  (print-str [f]\n    (+ \"#fn[\" f.name \"]\")))\n\n(terr-macro try [opts & body]\n  (var walker opts.walker\n       env opts.env\n       catch-clause (body.pop))\n\n  (if (or (not (list? catch-clause))\n          (< catch-clause.values.length 2)\n          (not= catch-clause.values.0 'catch)\n          (not (symbol? catch-clause.values.1)))\n    (throw \"Invalid catch clause\"))\n\n  (var catch-arg catch_clause.values.1\n       catch-body (catch-clause.values.slice 2)\n       parsed-catch-arg (catch-arg.parse))\n\n  (if (or (> parsed-catch-arg.parts.length 0)\n          parsed-catch-arg.namespace)\n    (throw \"Invalid catch arg\"))\n\n  (var munged-name (opts.mungeSymbol parsed-catch-arg.root)\n       catch-env (env.newScope true false))\n\n  (catch-env.scope.addSymbol munged-name\n    {:type \"any\"\n     :accessor (opts.Terr.Identifier munged-name)\n     :metadata {}})\n\n  (opts.Terr.Try\n    (opts.Terr.Seq (body.map (walker env)))\n    (opts.Terr.Identifier munged-name)\n    (opts.Terr.Seq (catch-body.map (walker catch-env)))))\n";
+var terrible_core = "(ns terrible.core)\n\n; Required bindings assumed by macros\n\n(var ^{:private false} list (lambda [& args]\n  (List.apply nil args)))\n\n(var ^{:private false} symbol (lambda [name]\n  (Symbol name)))\n\n(var ^{:private false} keyword (lambda [name]\n  (Keyword name)))\n\n(var ^{:terr-macro true :private false} def (lambda [opts id val]\n  (set! id.$metadata (opts.extend id.$metadata {:private false}))\n  (opts.builtins.var opts id val)))\n\n(def ^:terr-macro quote\n  (lambda [opts arg]\n    ((opts.walker (opts.env.setQuoted \"quote\")) arg)))\n\n(def ^:terr-macro syntax-quote\n  (lambda [opts arg]\n    ((opts.walker (opts.env.setQuoted \"syntax\")) arg)))\n\n(def ^:terr-macro unquote\n  (lambda [opts arg]\n    ((opts.walker (opts.env.setQuoted false)) arg)))\n\n(def ^:macro fn\n  (lambda [& body]\n    `(lambda ~@body)))\n\n(def ^:macro defmacro\n  (fn [name & body]\n    (var macro-name (symbol name.name))\n    (set! macro-name.$metadata {:macro true})\n    `(def ~macro-name (fn ~@body))))\n\n(def ^:macro terr-macro\n  (fn [name & body]\n    (var macro-name (symbol name.name))\n    (set! macro-name.$metadata {:terr-macro true})\n    `(def ~macro-name (fn ~@body))))\n\n; Useful utilities\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n; js operators\n\n(defmacro binary-operator [symb op]\n  `(terr-macro ~symb [opts# ~'& args#]\n    (~'.reduce (args#.map (opts#.walker opts#.env))\n      (fn [left# right#] (opts#.Terr.Binary left# ~op right#)))))\n\n(defmacro unary-operator [symb op]\n  `(terr-macro ~symb [opts# arg#]\n    (opts#.Terr.Unary ~op ((opts#.walker opts#.env) arg#))))\n\n(binary-operator + \"+\")\n(binary-operator == \"===\")\n(binary-operator ==? \"==\")\n(binary-operator - \"-\")\n(binary-operator not== \"!==\")\n(binary-operator not==? \"!=\")\n(binary-operator or \"||\")\n(binary-operator and \"&&\")\n(binary-operator > \">\")\n(binary-operator >= \">=\")\n(binary-operator < \"<\")\n(binary-operator <= \"<=\")\n(binary-operator / \"/\")\n(binary-operator instance? \"instanceof\")\n(binary-operator mod \"%\")\n\n(unary-operator not \"!\")\n(unary-operator xor \"~\")\n(unary-operator type \"typeof\")\n\n; Type checks\n\n(defn list? [l]\n  (instance? l List))\n\n(defn symbol? [s]\n  (instance? s Symbol))\n\n(defn keyword? [k]\n  (instance? k Keyword))\n\n(defn string? [s]\n  (== (type s) \"string\"))\n\n(defn number? [s]\n  (== (type s) \"number\"))\n\n(defn object? [o]\n  (and (not== nil o)\n       (== (type o) \"object\")))\n\n(defn vector? [v]\n  (Array.isArray v))\n\n; Core terr macros\n\n(terr-macro if [opts test cons alt]\n  (var walker (opts.walker opts.env))\n  (opts.Terr.If (walker test) (walker cons) (walker alt)))\n\n; Open a new logical scope, but not a new javascript scope, to allow block\n; insertion to work as expected.\n(terr-macro do [opts & body]\n  (var walker (opts.walker (opts.env.newScope true false)))\n  (opts.Terr.Seq (body.map walker)))\n\n; As do, but no new scope.\n; stop-gap until public vars can jump up scopes\n(terr-macro do-noscope [opts & body]\n  (var walker (opts.walker opts.env))\n  (opts.Terr.Seq (body.map walker)))\n\n(terr-macro get [opts target arg]\n  (var walker (opts.walker opts.env))\n  (opts.Terr.Member (walker target) (walker arg)))\n\n(terr-macro return [opts arg]\n  (opts.Terr.Return ((opts.walker opts.env) arg)))\n\n(terr-macro new [opts callee & args]\n  (var walker (opts.walker opts.env))\n  (opts.Terr.New (walker callee) (args.map walker)))\n\n(terr-macro throw [opts arg]\n  (opts.Terr.Throw ((opts.walker opts.env) arg)))\n\n; Refer a namespace into scope\n(terr-macro refer [opts symb alias]\n  (opts.env.scope.refer\n    symb.name\n    (if alias alias.name nil)\n    (do\n      (var ns (opts.env.env.findNamespace symb.name))\n      (if ns ns\n        (throw (+ \"Couldn't resolve namespace `\" symb.name \"`\")))))\n\n  (opts.Terr.Seq []))\n\n(terr-macro js-for [opts init test update & body]\n  (var env (opts.env.newScope true false)\n       walker (opts.walker env))\n\n  (opts.Terr.For\n    (walker `(var ~@init))\n    (walker test)\n    (walker update)\n    (opts.Terr.Seq (body.map walker))))\n\n(terr-macro js-for-in [opts left right & body]\n  (var env (opts.env.newScope true false)\n       walker (opts.walker env))\n\n  (if (not (symbol? left))\n    (throw \"Left binding in js-for-in must be a symbol.\"))\n\n  (opts.Terr.ForIn\n    (walker `(var ~left))\n    (walker right)\n    (opts.Terr.Seq (body.map walker))))\n\n; Core library\n\n(defmacro extern [& symbs]\n  (symbs.forEach (fn [s] (set! s.$metadata {:external true})))\n  `(var ~@symbs))\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defmacro when [cond & body]\n  `(if ~cond (do ~@body)))\n\n(defmacro cond [t v & cases]\n  (if (and (keyword? t)\n           (== t.name \"else\"))\n    v\n    (if (> cases.length 0)\n      `(if ~t ~v (cond ~@cases))\n      `(if ~t ~v))))\n\n(defmacro let [bindings & body]\n  (var vars [])\n  (js-for [i 0] (< i bindings.length) (set! i (+ i 2))\n    (var s (get bindings i)\n         v (get bindings (+ i 1)))\n    (vars.push `(var ~s ~v)))\n  `(do ~@vars ~@body))\n\n(defmacro -> [left app & apps]\n  (cond\n    (not app)       left\n    (keyword? app) `(-> (get ~left ~app.name) ~@apps)\n    (list? app)    `(-> (~app.values.0 ~left ~@(app.values.slice 1))\n                        ~@apps)\n    (symbol? app)  `(-> (~app ~left) ~@apps)\n    :else           (throw \"Invalid -> target\")))\n\n(defmacro defprotocol [symb & fns]\n  (let [proto-marker (+ symb.name \"$proto$\")\n        fn-defs (fns.map (fn [list]\n                  (let [n       list.values.0\n                        args    list.values.1\n                        body   (list.values.slice 2)\n                        marker (+ proto-marker n.name)]\n                    `(defn ~n ~args\n                      (if (get ~args.0 ~marker)\n                        ((get ~args.0 ~marker) ~@args)\n                        (do ~@body))))))]\n\n    `(do-noscope\n      (def ~symb ~proto-marker)\n      ~@fn-defs)))\n\n(defmacro extend-type [cls protocol & methods]\n  `(do\n    ~@(methods.map (fn [method]\n      (let [n method.values.0]\n       `(set!\n          (get (get ~cls \"prototype\") (+ ~protocol ~n.name))\n          (fn ~@(method.values.slice 1))))\n      ))))\n\n(defprotocol Equality\n  (= [left right]\n    (== left right)))\n\n; Avoid extra dispatch for not=\n(defn not= [left right]\n  (not (= left right)))\n\n(extend-type Keyword Equality\n  (= [left right]\n    (and (keyword? right)\n         (== left.name right.name))))\n\n(extend-type Symbol Equality\n  (= [left right]\n    (and (symbol? right)\n         (== left.name right.name))))\n\n(defprotocol Iterable\n  (map [obj func]\n    (let [new-obj {}]\n      (js-for-in k obj\n        (if (obj.hasOwnProperty k)\n          (set! (get new-obj k) (func (get obj k) k))))\n      new-obj))\n  (each [obj func]\n    (js-for-in k obj\n      (if (obj.hasOwnProperty k)\n        (func (get obj k) k)))\n    nil))\n\n(extend-type Array Iterable\n  (map [arr func] (arr.map func))\n  (each [arr func] (arr.forEach func)))\n\n(extend-type List Iterable\n  (map [this-list func] (.concat (list) (this-list.values.map func)))\n  (each [this-list func] (this-list.values.forEach func)))\n\n(defprotocol Printable\n  (print-str [obj]\n    (cond\n      (object? obj) (let [parts []]\n                      (each obj (fn [v k]\n                        (parts.push (print-str k))\n                        (parts.push (print-str v))))\n                      (+ \"{\" (parts.join \" \") \"}\"))\n      :else         (JSON.stringify obj))))\n\n(extend-type Array Printable\n  (print-str [arr]\n    (+ \"[\" (.join (map arr print-str) \" \") \"]\")))\n\n(extend-type List Printable\n  (print-str [list]\n    (+ \"(\" (.values.join (map list print-str) \" \") \")\")))\n\n(extend-type Keyword Printable\n  (print-str [kw]\n    (+ \":\" kw.name)))\n\n(extend-type Symbol Printable\n  (print-str [symb] symb.name))\n\n(extend-type Function Printable\n  (print-str [f]\n    (+ \"#fn[\" f.name \"]\")))\n\n(terr-macro try [opts & body]\n  (var walker opts.walker\n       env opts.env\n       catch-clause (body.pop))\n\n  (if (or (not (list? catch-clause))\n          (< catch-clause.values.length 2)\n          (not= catch-clause.values.0 'catch)\n          (not (symbol? catch-clause.values.1)))\n    (throw \"Invalid catch clause\"))\n\n  (var catch-arg catch_clause.values.1\n       catch-body (catch-clause.values.slice 2)\n       parsed-catch-arg (catch-arg.parse))\n\n  (if (or (> parsed-catch-arg.parts.length 0)\n          parsed-catch-arg.namespace)\n    (throw \"Invalid catch arg\"))\n\n  (var munged-name (opts.mungeSymbol parsed-catch-arg.root)\n       catch-env (env.newScope true false))\n\n  (catch-env.scope.addSymbol munged-name\n    {:type \"any\"\n     :accessor (opts.Terr.Identifier munged-name)\n     :metadata {}})\n\n  (opts.Terr.Try\n    (opts.Terr.Seq (body.map (walker env)))\n    (opts.Terr.Identifier munged-name)\n    (opts.Terr.Seq (catch-body.map (walker catch-env)))))\n";
 
 function Environment (target, interactive) {
 
@@ -742,6 +742,9 @@ function Scope (parent, js_frame) {
 }
 
 Scope.prototype.addSymbol = function (name, metadata) {
+  if (!metadata.metadata) {
+    metadata.metadata = {};
+  }
   this.logical_frame[name] = metadata;
   this.js_frame[name] = metadata;
 }
@@ -5685,7 +5688,18 @@ builtins = {
       if (parsed_id.namespace) { throw "Cannot var bind into another namespace." }
       if (parsed_id.parts.length > 0) { throw "Cannot var bind a multi-part id." }
 
-      if (env.scope.logicalScoped(munged_name)) {
+      if (metadata.external) {
+        // expose an outside global var
+
+        env.scope.addSymbol(munged_name, {
+          type: 'any',
+          accessor: Terr.Identifier(munged_name),
+          metadata: metadata
+        });
+
+        // no val associated, so backtrack one index
+        i = i - 1;
+      } else if (env.scope.logicalScoped(munged_name)) {
         // Just assign into the existing var
 
         var resolved = env.scope.resolve(munged_name);
@@ -5782,9 +5796,7 @@ builtins = {
             var node = Terr.Identifier(munged_name);
             fn_env.scope.addSymbol(munged_name, {
               type: 'any',
-              implicit: true,
-              accessor: node,
-              metadata: {}
+              accessor: node
             });
             formal_args.push(node);
           }
@@ -5794,16 +5806,12 @@ builtins = {
       }
 
       fn_env.scope.addSymbol('arguments', {
-        type: 'any',
-        implicit: true,
-        accessor: Terr.Identifier('arguments'),
-        metadata: {}
+        type: 'Arguments',
+        accessor: Terr.Identifier('arguments')
       });
       fn_env.scope.addSymbol('this', {
-        type: 'any',
-        implicit: true,
-        accessor: Terr.Identifier('this'),
-        metadata: {}
+        type: 'Object',
+        accessor: Terr.Identifier('this')
       });
 
       if (rest_arg) {
@@ -5856,32 +5864,6 @@ builtins = {
     }
 
     return Terr.Fn(arity_map, arities, variadic);
-  },
-
-  "declare": function (opts) {
-    var walker = opts.walker,
-        env = opts.env;
-
-    var symbs = Array.prototype.slice.call(arguments, 1);
-
-    symbs.forEach(function (symb) {
-      var parsed_symb = symb.parse();
-
-      if (parsed_symb.parts.length > 0 || parsed_symb.namespace) {
-        throw "Cannot declare " + symb.name
-      }
-
-      var munged = mungeSymbol(parsed_symb.root);
-      env.scope.addSymbol(munged, {
-        type: 'any',
-        export: false,
-        external: true,
-        accessor: Terr.Identifier(munged),
-        metadata: {}
-      });
-    });
-
-    return Terr.Seq([]);
   },
 
   "ns": function (opts, ns) {
@@ -6871,6 +6853,9 @@ function compileTerrible(text) {
     parsed.figure_out_scope();
     var compressor = UglifyJS.Compressor({});
     var compressed = parsed.transform(compressor);
+    // compressed.figure_out_scope();
+    // compressed.compute_char_frequency();
+    // compressed.mangle_names();
     js = compressed.print_to_string({beautify: true});
   }
 

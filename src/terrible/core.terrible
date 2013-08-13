@@ -171,6 +171,10 @@
 
 ; Core library
 
+(defmacro extern [& symbs]
+  (symbs.forEach (fn [s] (set! s.$metadata {:external true})))
+  `(var ~@symbs))
+
 (defmacro varfn [name & body]
   `(var ~name (fn ~@body)))
 

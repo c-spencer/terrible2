@@ -838,16 +838,22 @@ walk_handlers = {
         [Terr.Literal(node.name)]
       ));
     } else if (env.quoted == "syntax") {
-
       var parsed_node = parseSymbol(node.name);
       var resolved = resolveSymbol(env, parsed_node);
 
-      if (!resolved) {
-        console.trace();
-        throw "Couldn't resolve `" + node.name + "`";
-      }
-
       walker = walker(env.setQuoted(false));
+
+      if (!resolved) {
+        if (parsed_node.root.match(/#$/)) {
+          // TODO: insert safely
+          return loc(node, Terr.Call(
+            walker(core.symbol('terrible.core/symbol')),
+            [Terr.Literal(node.name)]
+          ));
+        } else {
+          throw "Couldn't resolve `" + node.name + "`";
+        }
+      }
 
       var ns = parsed_node.namespace || env.env.current_namespace.name;
 

@@ -5700,28 +5700,6 @@ function parseSymbol (symb) {
   }
 }
 
-function resolveSymbol (env, parsed_symbol) {
-  if (parsed_symbol.namespace) {
-
-    var ns = env.scope.resolveNamespace(parsed_symbol.namespace) ||
-             env.env.findNamespace(parsed_symbol.namespace);
-
-    if (!ns) {
-      throw "Couldn't find namespace `" + parsed_symbol.namespace + "`"
-    }
-
-    // If aliased, updated the parsed namespace.
-    parsed_symbol.namespace = ns.name;
-
-    env.env.current_namespace.requiresNamespace(ns);
-    var scope = ns.scope;
-  } else {
-    var scope = env.scope;
-  }
-
-  return scope.resolve(mungeSymbol(parsed_symbol.root));
-}
-
 // Shared declaration checks
 function declaration_guard (env, kind, id) {
   if (!isSymbol(id)) {
@@ -6144,7 +6122,7 @@ walk_handlers = {
         }].concat(tail)));
       }
 
-      var resolved = resolveSymbol(env, parsed_head);
+      var resolved = env.resolveSymbol(parsed_head);
 
       if (resolved.metadata['terr-macro']) {
         return _loc(resolved.value.apply(null, [{
@@ -6221,7 +6199,7 @@ walk_handlers = {
       ));
     } else if (env.quoted == "syntax") {
       var parsed_node = parseSymbol(node.name);
-      var resolved = resolveSymbol(env, parsed_node);
+      var resolved = env.resolveSymbol(parsed_node);
 
       walker = walker(env.setQuoted(false));
 
@@ -6246,7 +6224,7 @@ walk_handlers = {
     }
 
     var parsed_node = parseSymbol(node.name);
-    var resolved = resolveSymbol(env, parsed_node);
+    var resolved = env.resolveSymbol(parsed_node);
 
     if (!resolved) {
       console.trace();
@@ -6274,13 +6252,6 @@ walk_handlers = {
 
   "Keyword": function (node, walker, env) {
     return walker(env)(core.list(core.symbol("terrible.core/keyword"), node.toString()));
-
-    // Terr.Call(
-    //   Terr.Member(
-    //     Terr.Identifier("refer$terrible$core"), Terr.Literal("keyword")
-    //   ),
-    //   [Terr.Literal(node.toString())]
-    // );
   }
 }
 
@@ -6326,6 +6297,28 @@ WalkingEnv.prototype.newScope = function (logical, js) {
 
 WalkingEnv.prototype.setQuoted = function (quoted) {
   return new WalkingEnv(this.env, this.scope.newScope(false, false), quoted);
+}
+
+WalkingEnv.prototype.resolveSymbol = function (parsed_symbol) {
+  if (parsed_symbol.namespace) {
+
+    var ns = this.scope.resolveNamespace(parsed_symbol.namespace) ||
+             this.env.findNamespace(parsed_symbol.namespace);
+
+    if (!ns) {
+      throw "Couldn't find namespace `" + parsed_symbol.namespace + "`"
+    }
+
+    // If aliased, updated the parsed namespace.
+    parsed_symbol.namespace = ns.name;
+
+    this.env.current_namespace.requiresNamespace(ns);
+    var scope = ns.scope;
+  } else {
+    var scope = this.scope;
+  }
+
+  return scope.resolve(mungeSymbol(parsed_symbol.root));
 }
 
 function process_form (form, env, quoted) {

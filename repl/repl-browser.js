@@ -5662,31 +5662,6 @@ function parseSymbol (symb) {
   return { namespace: ns, root: root, parts: parts };
 }
 
-// Shared declaration checks
-function declaration_guard (env, kind, id) {
-  if (!isSymbol(id)) {
-    throw "First argument to " + kind + " must be symbol."
-  }
-
-  var parsed_id = parseSymbol(id);
-
-  if (parsed_id.namespace) {
-    throw "Cannot " + kind + " into another namespace."
-  }
-
-  if (parsed_id.parts.length !== 0) {
-    throw "Can't " + kind + " a multi-part id."
-  }
-
-  var munged_name = mungeSymbol(parsed_id.root);
-
-  if (env.scope.logicalScoped(munged_name)) {
-    throw "Cannot re" + kind + " " + id.name
-  }
-
-  return munged_name;
-}
-
 function declaration_val (val, walker, env, name) {
   if (val !== undefined) {
     val = walker(env)(val);
@@ -5713,44 +5688,64 @@ builtins = {
 
     for (var i = 0; i < inputs.length; i += 2) {
       var id = inputs[i],
-          val = inputs[i + 1],
-          munged_name = declaration_guard(env, "var", id);
+          val = inputs[i + 1];
 
-      var metadata = extend({
-        private: true
-      }, id.$metadata);
+      if (!isSymbol(id)) { throw "Var binding must be a symbol."; }
 
-      if (env.scope.nameClash(munged_name)) {
-        var js_name = env.genID(munged_name);
+      var parsed_id = parseSymbol(id),
+          munged_name = mungeSymbol(parsed_id.root),
+          metadata = extend({ private: true }, id.$metadata);
+
+      if (parsed_id.namespace) { throw "Cannot var bind into another namespace." }
+      if (parsed_id.parts.length > 0) { throw "Cannot var bind a multi-part id." }
+
+      if (env.scope.logicalScoped(munged_name)) {
+        // Just assign into the existing var
+
+        var resolved = env.scope.resolve(munged_name);
+        val = declaration_val(val, walker, env, munged_name);
+        env.scope.update(munged_name, { metadata: metadata });
+
+        if (resolved.top_level) {
+          decls.push(
+            Terr.NamespaceSet(ns_name, munged_name, resolved.js_name, val, "assign")
+          );
+        } else {
+          decls.push(Terr.Assign(Terr.Identifier(resolved.js_name), val));
+        }
       } else {
-        var js_name = munged_name;
-      }
+        if (env.scope.nameClash(munged_name)) {
+          var js_name = env.genID(munged_name);
+        } else {
+          var js_name = munged_name;
+        }
 
-      // this will change if/when non top-level def is supported
-      if (env.scope.top_level && !metadata.private) {
-        js_name = munged_ns + js_name;
-      }
+        // this will change if/when non top-level def is supported
+        if (env.scope.top_level && !metadata.private) {
+          js_name = munged_ns + js_name;
+        }
 
-      if (env.scope.top_level) {
-        var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
-      } else {
-        var accessor = Terr.Identifier(js_name);
-      }
+        if (env.scope.top_level) {
+          var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
+        } else {
+          var accessor = Terr.Identifier(js_name);
+        }
 
-      env.scope.addSymbol(munged_name, {
-        type: 'any',
-        accessor: accessor,
-        js_name: js_name,
-        top_level: env.scope.top_level,
-        metadata: metadata
-      });
+        env.scope.addSymbol(munged_name, {
+          type: 'any',
+          accessor: accessor,
+          js_name: js_name,
+          top_level: env.scope.top_level,
+          metadata: metadata
+        });
 
-      val = declaration_val(val, walker, env, munged_name);
+        val = declaration_val(val, walker, env, munged_name);
 
-      if (env.scope.top_level) {
-        decls.push(Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var"));
-      } else {
-        decls.push(Terr.Var([[accessor, val]]));
+        if (env.scope.top_level) {
+          decls.push(Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var"));
+        } else {
+          decls.push(Terr.Var([[accessor, val]]));
+        }
       }
     }
 

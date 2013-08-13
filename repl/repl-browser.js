@@ -6088,6 +6088,8 @@ walk_handler = function (node, walker, env) {
     return Terr.Arr(node.map(walker(env)));
   } else if (node === null) {
     return Terr.Literal(null);
+  } else if (node instanceof RegExp) {
+    return Terr.Literal(node);
   } else if (typeof node == 'object') {
     var props = [];
     walker = walker(env);
@@ -6349,7 +6351,7 @@ function stringReader (buffer, quote) {
     }
 
     if (ch == "\\") {
-      ch = buffer.read1()
+      ch = buffer.read1();
 
       if (ch == "t") { ch = "\t"; }
       else if (ch == "r") { ch = "\r"; }
@@ -6364,6 +6366,29 @@ function stringReader (buffer, quote) {
   }
 
   return str;
+}
+
+function regexReader (buffer, slash) {
+  var str = "", flags = "", ch;
+
+  while (ch = buffer.read1()) {
+    if (ch == '/') {
+      while ((ch = buffer.read1()).match(/^[gimy]$/)) {
+        flags += ch;
+      }
+      buffer.unread(ch);
+      break;
+    }
+
+    if (ch == "\\") {
+      str += ch;
+      ch = buffer.read1();
+    }
+
+    str += ch;
+  }
+
+  return RegExp(str, flags);
 }
 
 dispatchReader = function (buffer, hash) {
@@ -6541,7 +6566,8 @@ Reader.prototype.macros = {
 }
 
 Reader.prototype.dispatch_macros = {
-  '(': fnReader
+  '(': fnReader,
+  '/': regexReader
 }
 
 Reader.prototype.isWhitespace = function (str) { return str.match(/[\t\r\n,\s]/); }
@@ -6700,6 +6726,7 @@ Reader.prototype.newReadSession = function () {
         while (form = reader.read(buffer)) {
 
           form.$text = buffer.string.substring(buffer_state.pos, buffer.pos);
+
           form_handler(null, form);
 
           buffer_state = buffer.save();

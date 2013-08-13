@@ -503,6 +503,8 @@ walk_handler = function (node, walker, env) {
     return Terr.Arr(node.map(walker(env)));
   } else if (node === null) {
     return Terr.Literal(null);
+  } else if (node instanceof RegExp) {
+    return Terr.Literal(node);
   } else if (typeof node == 'object') {
     var props = [];
     walker = walker(env);

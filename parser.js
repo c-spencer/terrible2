@@ -344,7 +344,6 @@ builtins = {
 }
 
 function compile_eval (node, env) {
-
   var ENV = {
     get: function (namespace, name) {
       if (namespace === null) {
@@ -367,14 +366,7 @@ function compile_eval (node, env) {
   var compile_nodes = Terr.CompileToJS(node, "return");
 
   var js = codegen.generate(JS.Program(compile_nodes));
-
-  // console.log("<--Compile Eval-->")
-  // console.log(js);
-  // console.log("<--Run Compile Eval-->");
-  var ret = new Function('$ENV', js)(ENV);
-  // console.log("<--End Compile Eval-->")
-
-  return ret;
+  return new Function('$ENV', js)(ENV);
 }
 
 function loc (node, form) {
@@ -597,26 +589,21 @@ walk_handlers = {
     }
 
     return loc(node, root);
-  },
-
-  "Keyword": function (node, walker, env) {
-    return walker(env)(core.list(core.symbol("terrible.core/keyword"), node.toString()));
   }
 }
 
 walk_handler = function (node, walker, env) {
-  if (node instanceof core.list) {
+  if (isList(node)) {
     return walk_handlers.List(node, walker, env);
-  } if (node instanceof core.keyword) {
-    return walk_handlers.Keyword(node, walker, env);
-  } else if (node instanceof core.symbol) {
+  } if (isKeyword(node)) {
+    return walker(env)(core.list(core.symbol("terrible.core/keyword"), node.name));
+  } else if (isSymbol(node)) {
     return walk_handlers.Symbol(node, walker, env);
   } else if (Array.isArray(node)) {
     return Terr.Arr(node.map(walker(env)));
   } else if (node === null) {
     return Terr.Literal(null);
   } else if (typeof node == 'object') {
-
     var props = [];
     walker = walker(env);
 
@@ -628,7 +615,7 @@ walk_handler = function (node, walker, env) {
   } else {
     return Terr.Literal(node);
   }
-}
+};
 
 function WalkingEnv(env, scope, quoted) {
   this.env = env;
@@ -638,19 +625,18 @@ function WalkingEnv(env, scope, quoted) {
 
 WalkingEnv.prototype.genID = function (root) {
   return this.env.genID(root);
-}
+};
 
 WalkingEnv.prototype.newScope = function (logical, js) {
   return new WalkingEnv(this.env, this.scope.newScope(logical, js), this.quoted);
-}
+};
 
 WalkingEnv.prototype.setQuoted = function (quoted) {
   return new WalkingEnv(this.env, this.scope.newScope(false, false), quoted);
-}
+};
 
 WalkingEnv.prototype.resolveSymbol = function (parsed_symbol) {
   if (parsed_symbol.namespace) {
-
     var ns = this.scope.resolveNamespace(parsed_symbol.namespace) ||
              this.env.findNamespace(parsed_symbol.namespace);
 
@@ -658,7 +644,6 @@ WalkingEnv.prototype.resolveSymbol = function (parsed_symbol) {
       throw "Couldn't find namespace `" + parsed_symbol.namespace + "`"
     }
 
-    // If aliased, updated the parsed namespace.
     parsed_symbol.namespace = ns.name;
 
     this.env.current_namespace.requiresNamespace(ns);
@@ -668,22 +653,13 @@ WalkingEnv.prototype.resolveSymbol = function (parsed_symbol) {
   }
 
   return scope.resolve(mungeSymbol(parsed_symbol.root));
-}
+};
 
-function process_form (form, env, quoted) {
-
-  // console.log("form", require('util').inspect(form, false, 20));
-
-  var walking_env = new WalkingEnv(env, env.current_namespace.scope, quoted);
-
-  var ast = walker(walk_handler, form, walking_env);
-  // console.log("ast", require('util').inspect(ast, false, 20));
-  var value = compile_eval(ast, env);
-
-  // console.log(require('util').inspect(scope, false, 10));
+exports.process = function (form, env, quoted) {
+  var walking_env = new WalkingEnv(env, env.current_namespace.scope, quoted),
+      ast = walker(walk_handler, form, walking_env),
+      value = compile_eval(ast, env);
 
   return { ast: ast, value: value };
-}
-
-exports.process = process_form;
+};
 exports.mungeSymbol = mungeSymbol;

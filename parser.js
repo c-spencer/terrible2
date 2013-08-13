@@ -647,7 +647,7 @@ walk_handlers = {
 
   "Symbol": function (node, walker, env) {
 
-    if (env.quoted == "quote" || builtins[node.name]) {
+    if (env.quoted == "quote" || (env.quoted == "syntax" && builtins[node.name])) {
       walker = walker(env.setQuoted(false));
       return loc(node, Terr.Call(
         walker(core.symbol('terrible.core/symbol')),

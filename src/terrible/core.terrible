@@ -135,6 +135,18 @@
 (terr-macro throw [opts arg]
   (opts.Terr.Throw ((opts.walker opts.env) arg)))
 
+; Refer a namespace into scope
+(terr-macro refer [opts symb alias]
+  (opts.env.scope.refer
+    symb.name
+    (if alias alias.name nil)
+    (do
+      (var ns (opts.env.env.findNamespace symb.name))
+      (if ns ns
+        (throw (+ "Couldn't resolve namespace `" symb.name "`")))))
+
+  (opts.Terr.Seq []))
+
 (terr-macro js-for [opts init test update & body]
   (var env (opts.env.newScope true false)
        walker (opts.walker env))

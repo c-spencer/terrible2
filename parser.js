@@ -148,57 +148,40 @@ builtins = {
   },
 
   "lambda": function (opts, args) {
-
     var walker = opts.walker,
         env = opts.env;
 
-    // COMPILE FN
+    var compile_fn = function (args, body) {
+      var formal_args = [],
+          rest_arg = null,
+          fn_env = env.newScope(true, true),
+          consume_rest_arg = false;
 
-    function compile_fn (args, body) {
-      var formal_args = [];
-      var rest_arg = null;
-
-      var fn_env = env.newScope(true, true);
-
-      for (var i = 0, len = args.length; i < len; ++i) {
-        var arg = args[i];
-
-        if (!isSymbol(arg)) {
-          throw "Invalid formal arg " + arg;
-        }
+      args.forEach(function (arg, i) {
+        if (!isSymbol(arg)) { throw "Invalid formal arg " + arg; }
 
         var parsed_arg = arg.parse();
 
-        if (parsed_arg.parts.length === 0) {
-          if (parsed_arg.root == "&") {
-            rest_arg = args[i + 1];
+        if (parsed_arg.parts.length > 0) { throw "Invalid formal arg " + arg; }
 
-            if (!rest_arg || !isSymbol(rest_arg)) {
-              throw "Invalid rest arg " + rest_arg;
-            }
+        if (parsed_arg.root == "&") {
+          consume_rest_arg = true;
+        } else if (consume_rest_arg) {
+          if (i !== args.length - 1) { throw "Too many args following rest &"; }
 
-            var parsed_rest_arg = rest_arg.parse();
-
-            if (parsed_rest_arg.parts.length !== 0) {
-              throw "Invalid rest arg " + rest_arg;
-            }
-            if (i + 2 != args.length) {
-              throw "Too many args following rest &"
-            }
-            break;
-          } else {
-            var munged_name = mungeSymbol(parsed_arg.root);
-            var node = Terr.Identifier(munged_name);
-            fn_env.scope.addSymbol(munged_name, {
-              type: 'any',
-              accessor: node
-            });
-            formal_args.push(node);
-          }
+          rest_arg = arg;
         } else {
-          throw "Invalid formal arg " + arg;
+          var munged_name = mungeSymbol(parsed_arg.root),
+              node = Terr.Identifier(munged_name);
+
+          fn_env.scope.addSymbol(munged_name, {
+            type: 'any',
+            accessor: node
+          });
+
+          formal_args.push(node);
         }
-      }
+      });
 
       fn_env.scope.addSymbol('arguments', {
         type: 'Arguments',
@@ -215,48 +198,37 @@ builtins = {
             core.symbol("arguments"), formal_args.length)));
       }
 
-      var walked_body = body.map(walker(fn_env));
-      var terr_body = Terr.Seq(walked_body);
+      var terr_body = Terr.Seq(body.map(walker(fn_env)));
 
       return Terr.SubFn(formal_args, terr_body, formal_args.length, rest_arg != null);
-    }
+    }; // end compile_fn
 
-    // END COMPILE FN
+    var forms = isList(args) ? Array.prototype.slice.call(arguments, 1)
+                             : [core.list.apply(null,
+                                  Array.prototype.slice.call(arguments, 1))],
+        arity_map = {},
+        arities = [],
+        variadic = null;
 
-    if (isList(args)) { // multiple arity function
-      var arity_forms = Array.prototype.slice.call(arguments, 1);
-    } else {
-      var arity_forms = [core.list.apply(null, Array.prototype.slice.call(arguments, 1))]
-    }
-
-    var arity_map = {};
-    var arities = [];
-    var variadic = null;
-
-    for (var i = 0, len = arity_forms.length; i < len; ++i) {
-
-      var compiled = compile_fn(arity_forms[i].values[0], arity_forms[i].values.slice(1));
+    forms.forEach(function (form, i) {
+      var compiled = compile_fn(form.values[0], form.values.slice(1));
 
       if (compiled.variadic) {
-        if (i !== arity_forms.length - 1) {
+        if (i !== forms.length - 1) {
           throw "Variadic form must be in last position."
         }
-        var variadic = compiled.arity;
+        variadic = compiled.arity;
         arity_map._ = compiled;
         arities.push("_");
-
-        break;
-      }
-
-      if (arity_map[compiled.arity]) {
+      } else if (arity_map[compiled.arity]) {
         throw "Cannot define same arity twice."
       } else if (compiled.arity < arities[arities.length - 1]) {
         throw "Multi-arity functions should be declared in ascending number of arguments."
+      } else {
+        arity_map[compiled.arity] = compiled;
+        arities.push(compiled.arity);
       }
-
-      arity_map[compiled.arity] = compiled;
-      arities.push(compiled.arity);
-    }
+    });
 
     return Terr.Fn(arity_map, arities, variadic);
   },

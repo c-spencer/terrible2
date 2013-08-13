@@ -8,6 +8,7 @@ var core = require('./core');
 var fs = require('fs');
 
 var terrible_core = fs.readFileSync("./src/terrible/core.terrible");
+var core_js = fs.readFileSync("./core.js").replace(/exports[^\n]+\n/g, '');
 
 function Environment (target, interactive) {
 
@@ -116,7 +117,13 @@ Environment.prototype.evalText = function (text, error_cb) {
 };
 
 Environment.prototype.asJS = function (mode) {
-  var seq = Terr.Seq([]);
+  var raw_core = Terr.Call(
+    Terr.Identifier('eval'),
+    [Terr.Literal(core_js)]
+  );
+  raw_core['x-verbatim'] = core_js;
+
+  var seq = Terr.Seq([raw_core]);
 
   for (var i = 0; i < this.namespaces.length; ++i) {
     seq.values.push(Terr.Seq(this.namespaces[i].ast_nodes));
@@ -151,14 +158,17 @@ Environment.prototype.asJS = function (mode) {
   if (false) { // source map experimenting
     var result = codegen.generate(JS.Program(js_ast), {
       sourceMap: "input",
-      sourceMapWithCode: true
+      sourceMapWithCode: true,
+      verbatim: 'x-verbatim'
     });
 
     console.log("map", result.map.toString());
 
     return result.code;
   } else {
-    return codegen.generate(JS.Program(js_ast));
+    return codegen.generate(JS.Program(js_ast), {
+      verbatim: 'x-verbatim'
+    });
   }
 }
 

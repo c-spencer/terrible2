@@ -457,6 +457,9 @@ function loc (node, js) {
   if (node.loc) {
     js.loc = node.loc;
   }
+  if (node['x-verbatim']) {
+    js['x-verbatim'] = node['x-verbatim'];
+  }
   return js;
 }
 

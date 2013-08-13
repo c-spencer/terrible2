@@ -30,13 +30,13 @@
 (def ^:macro defmacro
   (fn [name & body]
     (var macro-name (symbol name.name))
-    (set! macro-name.$metadata :macro)
+    (set! macro-name.$metadata {:macro true})
     `(def ~macro-name (fn ~@body))))
 
 (def ^:macro terr-macro
   (fn [name & body]
     (var macro-name (symbol name.name))
-    (set! macro-name.$metadata :terr-macro)
+    (set! macro-name.$metadata {:terr-macro true})
     `(def ~macro-name (fn ~@body))))
 
 ; Useful utilities

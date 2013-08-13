@@ -151,6 +151,11 @@ function metadataReader (buffer, caret) {
     return this.read(buffer);
   } else {
     var metaform = this.read(buffer);
+    if (metaform instanceof core.keyword) {
+      var kw = metaform;
+      metaform = {};
+      metaform[kw] = true;
+    }
     var form = this.read(buffer);
     if (form instanceof core.symbol) {
       form.$metadata = metaform;

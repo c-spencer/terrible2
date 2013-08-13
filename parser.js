@@ -218,7 +218,8 @@ builtins = {
         accessor: accessor,
         js_name: js_name,
         export: false,
-        top_level: env.scope.top_level
+        top_level: env.scope.top_level,
+        metadata: id.$metadata || {}
       });
 
       val = declaration_val(val, walker, env, munged_name);
@@ -251,17 +252,6 @@ builtins = {
       var js_name = munged_ns + munged_name;
     }
 
-    if (id.$metadata) {
-      var metadata = id.$metadata;
-      var macro = isKeyword(metadata) && metadata.name == "macro";
-      var terr_macro = isKeyword(metadata) && metadata.name == "terr-macro";
-      var reader_macro = isKeyword(metadata) && metadata.name == "reader-macro";
-    } else {
-      var macro = false;
-      var terr_macro = false;
-      var reader_macro = false;
-    }
-
     var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
 
     env.scope.addSymbol(munged_name, {
@@ -270,9 +260,7 @@ builtins = {
       js_name: js_name,
       export: true,
       top_level: true,
-      macro: macro,
-      terr_macro: terr_macro,
-      reader_macro: reader_macro
+      metadata: id.$metadata || {}
     });
 
     val = declaration_val(val, walker, env, munged_name);
@@ -322,7 +310,12 @@ builtins = {
           } else {
             var munged_name = mungeSymbol(parsed_arg.root);
             var node = Terr.Identifier(munged_name);
-            fn_env.scope.addSymbol(munged_name, { type: 'any', implicit: true, accessor: node });
+            fn_env.scope.addSymbol(munged_name, {
+              type: 'any',
+              implicit: true,
+              accessor: node,
+              metadata: {}
+            });
             formal_args.push(node);
           }
         } else {
@@ -330,8 +323,18 @@ builtins = {
         }
       }
 
-      fn_env.scope.addSymbol('arguments', { type: 'any', implicit: true, accessor: Terr.Identifier('arguments') });
-      fn_env.scope.addSymbol('this', { type: 'any', implicit: true, accessor: Terr.Identifier('this') });
+      fn_env.scope.addSymbol('arguments', {
+        type: 'any',
+        implicit: true,
+        accessor: Terr.Identifier('arguments'),
+        metadata: {}
+      });
+      fn_env.scope.addSymbol('this', {
+        type: 'any',
+        implicit: true,
+        accessor: Terr.Identifier('this'),
+        metadata: {}
+      });
 
       if (rest_arg) {
         body.unshift(core.list(core.symbol("var"), rest_arg,
@@ -403,7 +406,8 @@ builtins = {
         type: 'any',
         export: false,
         external: true,
-        accessor: Terr.Identifier(munged)
+        accessor: Terr.Identifier(munged),
+        metadata: {}
       });
     });
 
@@ -538,7 +542,11 @@ builtins = {
     var munged_name = mungeSymbol(parsed_catch_arg.root);
 
     var catch_env = env.newScope(true, false);
-    catch_env.scope.addSymbol(munged_name, { type: 'any', accessor: Terr.Identifier(munged_name)});
+    catch_env.scope.addSymbol(munged_name, {
+      type: 'any',
+      accessor: Terr.Identifier(munged_name),
+      metadata: {}
+    });
     var catch_walker = walker(catch_env);
     catch_body = catch_body.map(catch_walker);
 
@@ -686,13 +694,13 @@ walk_handlers = {
 
       var resolved = resolveSymbol(env, parsed_head);
 
-      if (resolved.terr_macro) {
+      if (resolved.metadata['terr-macro']) {
         return _loc(resolved.value.apply(null, [{
           walker: walker,
           env: env,
           Terr: Terr
         }].concat(tail)));
-      } else if (resolved.macro) {
+      } else if (resolved.metadata['macro']) {
         return _loc(walker(env)(resolved.value.apply(null, tail)));
       }
 

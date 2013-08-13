@@ -107,7 +107,8 @@ Scope.prototype.expose = function (name, value) {
     type: 'any',
     accessor: Terr.NamespaceGet(null, name, name),
     value: value,
-    top_level: true
+    top_level: true,
+    metadata: {}
   };
 };
 

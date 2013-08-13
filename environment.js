@@ -108,7 +108,7 @@ Environment.prototype.evalText = function (text, error_cb) {
 
   }, function (reader, token, buffer) {
     var resolved = that.current_namespace.scope.resolve(parser.mungeSymbol(token.name));
-    if (resolved && resolved.reader_macro) {
+    if (resolved && resolved.metadata['reader-macro']) {
       try {
         return resolved.value(reader, buffer);
       } catch (exc) {

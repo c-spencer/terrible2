@@ -3,6 +3,8 @@ function walkProgramTree (handler, node) {
     var args = Array.prototype.slice.call(arguments);
 
     return function selfApp (node) {
+      if (node === undefined) return undefined;
+
       var new_node, k;
 
       result = handler.apply(null, [node, walkTree].concat(args))

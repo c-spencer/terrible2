@@ -6080,8 +6080,7 @@ builtins = {
 
     walker = walker(env);
 
-    return Terr.If(walker(test), cons !== undefined ? walker(cons) : undefined,
-                                 alt !== undefined ? walker(alt) : undefined);
+    return Terr.If(walker(test), walker(cons), walker(alt));
   },
 
   ".": function (opts, target, member) {
@@ -7751,6 +7750,8 @@ function walkProgramTree (handler, node) {
     var args = Array.prototype.slice.call(arguments);
 
     return function selfApp (node) {
+      if (node === undefined) return undefined;
+
       var new_node, k;
 
       result = handler.apply(null, [node, walkTree].concat(args))

@@ -6810,8 +6810,18 @@ var target = "browser";
 var mode = "library";
 var interactive = false;
 var minify = false;
+var compile_timeout = null;
 
-function compileTerrible(text) {
+function compileTerrible(text, callback) {
+  if (compile_timeout) {
+    clearTimeout(compile_timeout);
+  }
+  compile_timeout = setTimeout(function () {
+    callback(compileTerrible_(text))
+  }, 500);
+}
+
+function compileTerrible_(text) {
   var env = new Environment(target, interactive);
   var messages = [];
   env.scope.expose('print', function (v) {
@@ -6859,9 +6869,10 @@ var last_compile = null;
 function doCompile(forced) {
   var this_compile = document.getElementById('terrible-input').value;
   if (forced === true || this_compile != last_compile) {
-    var compile_result = compileTerrible(this_compile);
-    document.getElementById('terrible-output').value = compile_result.js;
-    document.getElementById('terrible-log').value = compile_result.log.join("\n");
+    compileTerrible(this_compile, function (result) {
+      document.getElementById('terrible-output').value = result.js;
+      document.getElementById('terrible-log').value = result.log.join("\n");
+    });
   }
   last_compile = this_compile;
 }

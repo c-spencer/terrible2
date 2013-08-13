@@ -175,9 +175,12 @@ builtins = {
       });
 
       if (rest_arg) {
-        body.unshift(core.list(core.symbol("var"), rest_arg,
-          core.list(core.symbol("Array.prototype.slice.call"),
-            core.symbol("arguments"), formal_args.length)));
+        body.unshift(new core.list([
+                        new core.symbol("var"),
+                        rest_arg,
+                        new core.list([new core.symbol("Array.prototype.slice.call"),
+                                       new core.symbol("arguments"),
+                                       formal_args.length]) ]));
       }
 
       var terr_body = Terr.Seq(body.map(walker(fn_env)));
@@ -325,7 +328,7 @@ walk_handlers = {
                                            head.name !== "unquote-splicing"))) {
       var values = node.values.map(walker),
           list_symb = o_walker(env.setQuoted(false))(
-            core.list(core.symbol('terrible.core/list'))
+            new core.list([new core.symbol('terrible.core/list')])
           );
 
       if (env.quoted == "syntax") {
@@ -431,7 +434,7 @@ walk_handlers = {
     if (env.quoted == "quote" || (env.quoted == "syntax" && builtins[node.name])) {
       walker = walker(env.setQuoted(false));
       return loc(node, Terr.Call(
-        walker(core.symbol('terrible.core/symbol')),
+        walker(new core.symbol('terrible.core/symbol')),
         [Terr.Literal(node.name)]
       ));
     } else if (env.quoted == "syntax") {
@@ -444,7 +447,7 @@ walk_handlers = {
         if (parsed_node.root.match(/#$/)) {
           // TODO: insert safely
           return loc(node, Terr.Call(
-            walker(core.symbol('terrible.core/symbol')),
+            walker(new core.symbol('terrible.core/symbol')),
             [Terr.Literal(node.name)]
           ));
         } else {
@@ -455,7 +458,7 @@ walk_handlers = {
       var ns = parsed_node.namespace || env.env.current_namespace.name;
 
       return loc(node, Terr.Call(
-        walker(core.symbol('terrible.core/symbol')),
+        walker(new core.symbol('terrible.core/symbol')),
         [Terr.Literal(ns + "/" + [parsed_node.root].concat(parsed_node.parts).join("."))]
       ));
     }
@@ -494,7 +497,7 @@ walk_handler = function (node, walker, env) {
   if (isList(node)) {
     return walk_handlers.List(node, walker, env);
   } if (isKeyword(node)) {
-    return walker(env)(core.list(core.symbol("terrible.core/keyword"), node.name));
+    return walker(env)(new core.list([new core.symbol("terrible.core/keyword"), node.name]));
   } else if (isSymbol(node)) {
     return walk_handlers.Symbol(node, walker, env);
   } else if (Array.isArray(node)) {

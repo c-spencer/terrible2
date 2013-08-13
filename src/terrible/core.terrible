@@ -5,18 +5,24 @@
 ; needed early for var args
 (var ^:external Array)
 
+(var ^{:terr-macro true :private false} new
+  (lambda [opts callee & args]
+    (var walker (opts.walker opts.env))
+    (opts.Terr.New (walker callee) (args.map walker))))
+
 (var ^{:private false} list (lambda [& args]
-  (List.apply nil args)))
+  (new List args)))
 
 (var ^{:private false} symbol (lambda [name]
-  (Symbol name)))
+  (new Symbol name)))
 
 (var ^{:private false} keyword (lambda [name]
-  (Keyword name)))
+  (new Keyword name)))
 
-(var ^{:terr-macro true :private false} def (lambda [opts id val]
-  (set! id.$metadata (opts.extend id.$metadata {:private false}))
-  (opts.builtins.var opts id val)))
+(var ^{:terr-macro true :private false} def
+  (lambda [opts id val]
+    (set! id.$metadata (opts.extend id.$metadata {:private false}))
+    (opts.builtins.var opts id val)))
 
 (def ^:terr-macro quote
   (lambda [opts arg]
@@ -137,10 +143,6 @@
 
 (terr-macro return [opts arg]
   (opts.Terr.Return ((opts.walker opts.env) arg)))
-
-(terr-macro new [opts callee & args]
-  (var walker (opts.walker opts.env))
-  (opts.Terr.New (walker callee) (args.map walker)))
 
 (terr-macro throw [opts arg]
   (opts.Terr.Throw ((opts.walker opts.env) arg)))

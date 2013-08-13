@@ -98,7 +98,7 @@ function unmatchedDelimiter(c) {
 }
 
 function listReader (buffer, openparen) {
-  return core.list.apply(null, this.readDelimitedList(')', buffer));
+  return new core.list(this.readDelimitedList(')', buffer));
 }
 
 function vectorReader (buffer, openparen) {
@@ -114,7 +114,11 @@ function hashReader (buffer, openparen) {
   for (var i = 0, len = hash.length; i < len; i += 2) {
     var left = hash[i];
     var right = hash[i+1];
-    obj[left] = right;
+    if (left instanceof core.keyword) {
+      obj[left.name] = right;
+    } else {
+      obj[left] = right;
+    }
   }
   return obj;
 }
@@ -125,24 +129,24 @@ function commentReader (buffer) {
 }
 
 function quoteReader (buffer, apostrophe) {
-  return core.list(core.symbol('quote'), this.read(buffer));
+  return new core.list([new core.symbol('quote'), this.read(buffer)]);
 }
 
 function syntaxQuoteReader (buffer, tick) {
-  return core.list(core.symbol('syntax-quote'), this.read(buffer));
+  return new core.list([new core.symbol('syntax-quote'), this.read(buffer)]);
 }
 
 function unquoteReader (buffer, apostrophe) {
   if (buffer.lookahead(1) == "@") {
     buffer.read1();
-    return core.list(core.symbol('unquote-splicing'), this.read(buffer));
+    return new core.list([new core.symbol('unquote-splicing'), this.read(buffer)]);
   } else {
-    return core.list(core.symbol('unquote'), this.read(buffer));
+    return new core.list([new core.symbol('unquote'), this.read(buffer)]);
   }
 }
 
 function splatReader (buffer, tilde) {
-  return core.list(core.symbol('splat'), this.read(buffer));
+  return new core.list([new core.symbol('splat'), this.read(buffer)]);
 }
 
 function metadataReader (buffer, caret) {
@@ -154,7 +158,7 @@ function metadataReader (buffer, caret) {
     if (metaform instanceof core.keyword) {
       var kw = metaform;
       metaform = {};
-      metaform[kw] = true;
+      metaform[kw.name] = true;
     }
     var form = this.read(buffer);
     if (form instanceof core.symbol) {
@@ -231,7 +235,7 @@ function findArg (reader, n) {
 
 gen_arg = function (reader, n) {
   var root = (n === -1) ? "rest" : "arg$" + n;
-  return core.symbol(reader.genID(root));
+  return new core.symbol(reader.genID(root));
 }
 
 function registerArg (reader, n) {
@@ -345,7 +349,7 @@ fnReader = function (buffer, openparen) {
     }
 
     if (rest_arg) {
-      args.push(core.symbol('&'));
+      args.push(new core.symbol('&'));
       args.push(rest_arg);
     }
   } else {
@@ -355,9 +359,9 @@ fnReader = function (buffer, openparen) {
   this.ARG_ENV = originalENV;
 
   if (form.values[0] && !(form.values[0] instanceof core.symbol)) {
-    return core.list.apply(null, [core.symbol('lambda'), args].concat(form.values));
+    return new core.list([new core.symbol('lambda'), args].concat(form.values));
   } else {
-    return core.list(core.symbol('lambda'), args, form);
+    return new core.list([new core.symbol('lambda'), args, form]);
   }
 }
 
@@ -431,7 +435,7 @@ Reader.prototype.read = function (buffer) {
       var ch2 = buffer.read1();
       if (this.isDigit(ch2)) {
         var n = this.readNumber(buffer, ch2);
-        return annotateLocation(core.list(core.symbol(ch), n), buffer, start_state);
+        return annotateLocation(new core.list([new core.symbol(ch), n]), buffer, start_state);
       } else {
         buffer.restore(buffer_state);
       }
@@ -463,8 +467,8 @@ Reader.prototype.reifySymbol = function (s) {
   if (s == 'nil' || s == 'null') return null;
   if (s == 'true') return true;
   if (s == 'false') return false;
-  if (s == 'undefined') return core.symbol('undefined');
-  if (symbolPattern.exec(s)) return core.symbol(s);
+  if (s == 'undefined') return new core.symbol('undefined');
+  if (symbolPattern.exec(s)) return new core.symbol(s);
 
   throw "Invalid token: #{s}";
 }
@@ -478,9 +482,9 @@ Reader.prototype.readToken = function (buffer, s) {
       if (this.isWhitespace(ch) || this.isTerminatingMacro(ch)) {
         buffer.restore(buffer_state);
         if (kw === "") {
-          return core.symbol(s);
+          return new core.symbol(s);
         } else {
-          return core.keyword(kw);
+          return new core.keyword(kw);
         }
       }
       kw += ch;

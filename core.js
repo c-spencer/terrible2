@@ -4,13 +4,8 @@
 // Map == Object
 // Literals == Number / String
 
-function List() {
-  var values = Array.prototype.slice.call(arguments, 0);
-  if (this instanceof List) {
-    this.values = values;
-  } else {
-    return new (Function.prototype.bind.apply(List, [null].concat(values)));
-  }
+function List(values) {
+  this.values = values;
 }
 List.prototype.concat = function (arg) {
   this.values = this.values.concat(arg);
@@ -23,13 +18,8 @@ List.prototype.push = function () {
 exports.list = List;
 
 function Symbol(name) {
-  if (this instanceof Symbol) {
-    this.name = name;
-  } else {
-    return new Symbol(name);
-  }
+  this.name = name;
 }
-Symbol.prototype.toString = function () { return this.name; };
 Symbol.prototype.parse = function () {
   var name = this.name,
       ns = "",
@@ -55,11 +45,6 @@ Symbol.prototype.parse = function () {
 exports.symbol = Symbol;
 
 function Keyword (name) {
-  if (this instanceof Keyword) {
-    this.name = name;
-  } else {
-    return new Keyword(name);
-  }
+  this.name = name;
 }
-Keyword.prototype.toString = function () { return this.name; };
 exports.keyword = Keyword;

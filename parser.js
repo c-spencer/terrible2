@@ -14,6 +14,16 @@ function isList(s) {
   return s instanceof core.list;
 }
 
+function extend(left, right) {
+  left = left || {};
+  for (var k in right) {
+    if (right.hasOwnProperty(k)) {
+      left[k] = right[k];
+    }
+  }
+  return left;
+}
+
 function mungeSymbol (str) {
   return str.replace(/-/g, '_')
     .replace(/\:/g, "_COLON_")
@@ -189,10 +199,11 @@ builtins = {
     return Terr.Member(walker(target), walker(arg));
   },
 
-  "var": function (opts, id, val) {
+  "var": function (opts) {
     var walker = opts.walker,
         env = opts.env,
         ns_name = env.env.current_namespace.name,
+        munged_ns = mungeSymbol(ns_name.replace(/\./g, '$')) + "$",
         decls = [],
         inputs = Array.prototype.slice.call(arguments, 1);
 
@@ -201,10 +212,19 @@ builtins = {
           val = inputs[i + 1],
           munged_name = declaration_guard(env, "var", id);
 
+      var metadata = extend({
+        private: true
+      }, id.$metadata);
+
       if (env.scope.nameClash(munged_name)) {
         var js_name = env.genID(munged_name);
       } else {
         var js_name = munged_name;
+      }
+
+      // this will change if/when non top-level def is supported
+      if (env.scope.top_level && !metadata.private) {
+        js_name = munged_ns + js_name;
       }
 
       if (env.scope.top_level) {
@@ -217,9 +237,8 @@ builtins = {
         type: 'any',
         accessor: accessor,
         js_name: js_name,
-        export: false,
         top_level: env.scope.top_level,
-        metadata: id.$metadata || {}
+        metadata: metadata
       });
 
       val = declaration_val(val, walker, env, munged_name);
@@ -227,45 +246,11 @@ builtins = {
       if (env.scope.top_level) {
         decls.push(Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var"));
       } else {
-        decls.push([accessor, val]);
+        decls.push(Terr.Var([[accessor, val]]));
       }
     }
 
-    if (env.scope.top_level) {
-      return Terr.Seq(decls);
-    } else {
-      return Terr.Var(decls);
-    }
-
-  },
-
-  "def": function (opts, id, val) {
-    var walker = opts.walker,
-        env = opts.env,
-        munged_name = declaration_guard(env, "def", id),
-        ns_name = env.env.current_namespace.name,
-        munged_ns = mungeSymbol(ns_name.replace(/\./g, '$')) + "$";
-
-    if (env.scope.nameClash(munged_name)) {
-      var js_name = munged_ns + env.genID(munged_name);
-    } else {
-      var js_name = munged_ns + munged_name;
-    }
-
-    var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
-
-    env.scope.addSymbol(munged_name, {
-      type: 'any',
-      accessor: accessor,
-      js_name: js_name,
-      export: true,
-      top_level: true,
-      metadata: id.$metadata || {}
-    });
-
-    val = declaration_val(val, walker, env, munged_name);
-
-    return Terr.NamespaceSet(ns_name, munged_name, js_name, val, "var");
+    return Terr.Seq(decls);
   },
 
   "lambda": function (opts, args) {
@@ -698,7 +683,9 @@ walk_handlers = {
         return _loc(resolved.value.apply(null, [{
           walker: walker,
           env: env,
-          Terr: Terr
+          Terr: Terr,
+          extend: extend,
+          builtins: builtins
         }].concat(tail)));
       } else if (resolved.metadata['macro']) {
         return _loc(walker(env)(resolved.value.apply(null, tail)));

@@ -124,7 +124,7 @@ Scope.prototype.refer = function (namespace, alias, ns) {
 Scope.prototype.exports = function () {
   var lf = this.logical_frame;
   return Object.keys(lf).filter(function (k) {
-    return lf[k].export;
+    return !lf[k].metadata.private;
   }).map(function(k) {
     return {name: k, data: lf[k]};
   });

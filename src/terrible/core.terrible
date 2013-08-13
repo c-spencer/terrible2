@@ -2,14 +2,18 @@
 
 ; Required bindings assumed by macros
 
-(def list (lambda [& args]
+(var ^{:private false} list (lambda [& args]
   (List.apply nil args)))
 
-(def symbol (lambda [name]
+(var ^{:private false} symbol (lambda [name]
   (Symbol name)))
 
-(def keyword (lambda [name]
+(var ^{:private false} keyword (lambda [name]
   (Keyword name)))
+
+(var ^{:terr-macro true :private false} def (lambda [opts id val]
+  (set! id.$metadata (opts.extend id.$metadata {:private false}))
+  (opts.builtins.var opts id val)))
 
 (def ^:terr-macro quote
   (lambda [opts arg]

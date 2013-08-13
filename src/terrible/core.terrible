@@ -223,10 +223,9 @@
                         body   (list.values.slice 2)
                         marker (+ proto-marker n.name)]
                     `(defn ~n ~args
-                      (if (get ~args.0 ~marker)
+                      (if (and (not==? nil ~args.0) (get ~args.0 ~marker))
                         ((get ~args.0 ~marker) ~@args)
                         (do ~@body))))))]
-
     `(do-noscope
       (def ~symb ~proto-marker)
       ~@fn-defs)))

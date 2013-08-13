@@ -145,6 +145,22 @@ function splatReader (buffer, tilde) {
   return core.list(core.symbol('splat'), this.read(buffer));
 }
 
+function metadataReader (buffer, caret) {
+  var ch = buffer.lookahead(1);
+  if (this.isWhitespace(ch)) {
+    return this.read(buffer);
+  } else {
+    var metaform = this.read(buffer);
+    var form = this.read(buffer);
+    if (form instanceof core.symbol) {
+      form.$metadata = metaform;
+      return form;
+    } else {
+      throw "Can only attach metadata to symbols";
+    }
+  }
+}
+
 function stringReader (buffer, quote) {
   var str = "", docquote = false, ch;
 
@@ -350,7 +366,8 @@ Reader.prototype.macros = {
   "@": splatReader,
   '"': stringReader,
   '%': argReader,
-  '#': dispatchReader
+  '#': dispatchReader,
+  '^': metadataReader
 }
 
 Reader.prototype.dispatch_macros = {

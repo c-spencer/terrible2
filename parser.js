@@ -74,6 +74,7 @@ builtins = {
         i = i - 1;
       } else if (env.scope.logicalScoped(munged_name)) { // Just assign into existing var
         var resolved = env.scope.resolve(munged_name);
+        if (resolved.metadata.constant) { throw "Cannot reassign a constant " + munged_name }
 
         val = walker(val);
         env.scope.update(munged_name, {
@@ -235,8 +236,17 @@ builtins = {
     var seq = [];
 
     for (var i = 0, len = settings.length; i < len; i += 2) {
-      var left = walker(settings[i]);
-      var right = walker(settings[i + 1]);
+      var o_left = settings[i],
+          left = walker(left),
+          right = walker(settings[i + 1]);
+
+      if (isSymbol(o_left)) {
+        var left_parsed = o_left.parse();
+        if (left_parsed.parts.length === 0) {
+          var resolved = env.resolveSymbol(left_parsed);
+          if (resolved.metadata.constant) { throw "Cannot reassign constant " + o_left.name }
+        }
+      }
 
       if (left.type == "NamespaceGet") {
         left.type = "NamespaceSet";
@@ -457,6 +467,8 @@ walk_handlers = {
       console.trace();
       throw "Couldn't resolve `" + node.name + "`";
     }
+
+    if (resolved.metadata.constant) { return resolved.node; }
 
     if (resolved.top_level) {
       var root = Terr.NamespaceGet(

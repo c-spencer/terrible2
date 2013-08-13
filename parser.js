@@ -175,12 +175,11 @@ builtins = {
       });
 
       if (rest_arg) {
-        body.unshift(new core.list([
-                        new core.symbol("var"),
-                        rest_arg,
-                        new core.list([new core.symbol("Array.prototype.slice.call"),
-                                       new core.symbol("arguments"),
-                                       formal_args.length]) ]));
+        body.unshift(
+          new core.list([new core.symbol("var"), rest_arg,
+                         new core.list([new core.symbol("Array.prototype.slice.call"),
+                                        new core.symbol("arguments"),
+                                        formal_args.length]) ]));
       }
 
       var terr_body = Terr.Seq(body.map(walker(fn_env)));

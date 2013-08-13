@@ -40,6 +40,9 @@ function mungeSymbol (str) {
     .replace(/\\/g, "_BSLASH_")
     .replace(/\?/g, "_QMARK_")
     .replace(/\./g, "_DOT_")
+    .replace(/^(break|do|instanceof|typeof|case|else|new|var|catch|finally|return|void|continue|for|switch|while|debugger|function|with|default|if|throw|delete|in|try|class|enum|extends|super|const|export|import|implements|let|private|public|yield|interface|package|protected|static)$/g, function (match) {
+      return match + "_";
+    });
 }
 
 function reduceBinaryOperator (values, op) {

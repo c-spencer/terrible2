@@ -1,5 +1,7 @@
 (ns terrible.core)
 
+; Required bindings assumed by macros
+
 (def list (lambda [& args]
   (List.apply nil args)))
 
@@ -9,15 +11,38 @@
 (def keyword (lambda [name]
   (Keyword name)))
 
+(def ^:macro fn
+  (lambda [& body]
+    `(lambda ~@body)))
+
 (def ^:macro defmacro
-  (lambda [name & body]
+  (fn [name & body]
     (var macro-name (symbol name.name))
     (set! macro-name.$metadata :macro)
-    `(def ~macro-name (lambda ~@body))))
+    `(def ~macro-name (fn ~@body))))
 
+(def ^:macro terr-macro
+  (fn [name & body]
+    (var macro-name (symbol name.name))
+    (set! macro-name.$metadata :terr-macro)
+    `(def ~macro-name (fn ~@body))))
 
-(defmacro fn [& body]
-  `(lambda ~@body))
+; Core terr macros
+
+(terr-macro throw [opts arg]
+  (opts.Terr.Throw ((opts.walker opts.env) arg)))
+
+(terr-macro js-for [opts init test update & body]
+  (var env (opts.env.newScope true false))
+  (var walker (opts.walker env))
+
+  (opts.Terr.For
+    (walker `(var ~@init))
+    (walker test)
+    (walker update)
+    (opts.Terr.Seq (body.map walker))))
+
+; Core library
 
 (defmacro defn [name & body]
   `(def ~name (fn ~@body)))
@@ -27,6 +52,9 @@
 
 (defmacro setfn! [name & body]
   `(set! ~name (fn ~@body)))
+
+(defmacro when [cond & body]
+  `(if ~cond (do ~@body)))
 
 (defn list? [l]
   (instance? l List))

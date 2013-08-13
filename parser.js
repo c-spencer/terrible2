@@ -295,8 +295,10 @@ builtins = {
     if (id.$metadata) {
       var metadata = id.$metadata;
       var macro = isKeyword(metadata) && metadata.name == "macro";
+      var terr_macro = isKeyword(metadata) && metadata.name == "terr-macro";
     } else {
       var macro = false;
+      var terr_macro = false;
     }
 
     var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
@@ -307,7 +309,8 @@ builtins = {
       js_name: js_name,
       export: true,
       top_level: true,
-      macro: macro
+      macro: macro,
+      terr_macro: terr_macro
     });
 
     val = declaration_val(val, walker, env, munged_name);
@@ -527,25 +530,6 @@ builtins = {
     return Terr.Seq(args.map(walker));
   },
 
-  // (for [i 0 len 10] (< i len) (set! i (inc i))
-  //    i)
-
-  "js-for": function (opts, init, test, update) {
-    var walker = opts.walker,
-        env = opts.env;
-
-    env = env.newScope(true, false);
-
-    var walker = walker(env);
-
-    var init = walker(core.list(core.symbol('var')).concat(init));
-    var test = walker(test);
-    var update = walker(update);
-    var body = Terr.Seq(Array.prototype.slice.call(arguments, 4).map(walker));
-
-    return Terr.For(init, test, update, body);
-  },
-
   "js-for-in": function (opts, left, right) {
     var walker = opts.walker,
         env = opts.env;
@@ -629,10 +613,6 @@ builtins = {
     catch_body = catch_body.map(catch_walker);
 
     return Terr.Try(body, Terr.Identifier(munged_name), Terr.Seq(catch_body), undefined);
-  },
-
-  "throw": function (opts, arg) {
-    return Terr.Throw(opts.walker(opts.env)(arg));
   },
 
   "quote": function (opts, arg) {
@@ -788,7 +768,13 @@ walk_handlers = {
 
       var resolved = resolveSymbol(env, parsed_head);
 
-      if (resolved.macro) {
+      if (resolved.terr_macro) {
+        return _loc(resolved.value.apply(null, [{
+          walker: walker,
+          env: env,
+          Terr: Terr
+        }].concat(tail)));
+      } else if (resolved.macro) {
         return _loc(walker(env)(resolved.value.apply(null, tail)));
       }
 

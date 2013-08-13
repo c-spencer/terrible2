@@ -5626,33 +5626,24 @@ function extend(left, right) {
   return left;
 }
 
+var reserved_words = ['break', 'do', 'instanceof', 'typeof', 'case', 'else', 'new',
+                      'var', 'catch', 'finally', 'return', 'void', 'continue', 'for',
+                      'switch', 'while', 'debugger', 'function', 'with', 'default', 'if',
+                      'throw', 'delete', 'in', 'try', 'class', 'enum', 'extends', 'super',
+                      'const', 'export', 'import', 'implements', 'let', 'private', 'public',
+                      'yield', 'interface', 'package', 'protected', 'static'];
+
 function mungeSymbol (str) {
   return str.replace(/-/g, '_')
-    .replace(/\:/g, "_COLON_")
-    .replace(/\+/g, "_PLUS_")
-    .replace(/\>/g, "_GT_")
-    .replace(/\</g, "_LT_")
-    .replace(/\=/g, "_EQ_")
-    .replace(/\~/g, "_TILDE_")
-    .replace(/\!/g, "_BANG_")
-    .replace(/\@/g, "_CIRCA_")
-    .replace(/\#/g, "_SHARP_")
-    .replace(/\\'/g, "_SINGLEQUOTE_")
-    .replace(/\"/g, "_DOUBLEQUOTE_")
-    .replace(/\%/g, "_PERCENT_")
-    .replace(/\^/g, "_CARET_")
-    .replace(/\&/g, "_AMPERSAND_")
-    .replace(/\*/g, "_STAR_")
-    .replace(/\|/g, "_BAR_")
-    .replace(/\{/g, "_LBRACE_")
-    .replace(/\}/g, "_RBRACE_")
-    .replace(/\[/g, "_LBRACK_")
-    .replace(/\]/g, "_RBRACK_")
-    .replace(/\//g, "_SLASH_")
-    .replace(/\\/g, "_BSLASH_")
-    .replace(/\?/g, "_QMARK_")
-    .replace(/\./g, "_DOT_")
-    .replace(/^(break|do|instanceof|typeof|case|else|new|var|catch|finally|return|void|continue|for|switch|while|debugger|function|with|default|if|throw|delete|in|try|class|enum|extends|super|const|export|import|implements|let|private|public|yield|interface|package|protected|static)$/g, function (match) {
+    .replace(/\:/g, "_COLON_") .replace(/\+/g, "_PLUS_")     .replace(/\>/g, "_GT_")
+    .replace(/\</g, "_LT_")    .replace(/\=/g, "_EQ_")       .replace(/\~/g, "_TILDE_")
+    .replace(/\!/g, "_BANG_")  .replace(/\@/g, "_CIRCA_")    .replace(/\#/g, "_HASH_")
+    .replace(/\\'/g, "_QUOTE_").replace(/\"/g, "_DQUOTE_")   .replace(/\%/g, "_PERCENT_")
+    .replace(/\^/g, "_CARET_") .replace(/\&/g, "_AMPERSAND_").replace(/\*/g, "_STAR_")
+    .replace(/\|/g, "_BAR_")   .replace(/\{/g, "_LBRACE_")   .replace(/\}/g, "_RBRACE_")
+    .replace(/\[/g, "_LBRACK_").replace(/\]/g, "_RBRACK_")   .replace(/\//g, "_SLASH_")
+    .replace(/\\/g, "_BSLASH_").replace(/\?/g, "_QMARK_")    .replace(/\./g, "_DOT_")
+    .replace(RegExp("^(" + reserved_words.join("|") + ")$"), function (match) {
       return match + "_";
     });
 }

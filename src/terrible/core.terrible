@@ -311,7 +311,7 @@
 
   (var catch-arg catch_clause.values.1
        catch-body (catch-clause.values.slice 2)
-       parsed-catch-arg (opts.parseSymbol catch-arg.name))
+       parsed-catch-arg (opts.parseSymbol catch-arg))
 
   (if (or (> parsed-catch-arg.parts.length 0)
           parsed-catch-arg.namespace)

@@ -5636,68 +5636,30 @@ function mungeSymbol (str) {
 }
 
 function parseSymbol (symb) {
-  var pos = 0;
-  var ch = symb[pos++];
-  var ns = null;
-  var parts = [];
-  var root = null;
-  var part = "";
-  var no_ns = false;
-
-  if (ch === ".") {
-    if (symb[1] === undefined || symb[1] === ".") {
-      return {
-        namespace: ns,
-        root: symb,
-        parts: parts
-      }
-    } else {
-      root = "";
-      ch = symb[pos++];
-    }
+  if (!isSymbol(symb)) {
+    throw "Cannot parseSymbol non-symbol " + symb
   }
 
-  while (ch !== undefined) {
-    if (ch === ".") {
-      if (part === "") {
-        throw "Couldn't parse symbol `" + symb + "`"
-      }
-      if (root === null) {
-        root = part;
-        part = "";
-      } else {
-        parts.push(part);
-        part = "";
-      }
-    } else if (ch == "/" && no_ns === false) {
-      if (pos === 1) {
-        no_ns = true;
-        part += ch;
-      } else if (ns === null && pos !== 1) {
-        ns = symb.slice(0, pos - 1);
-        part = "";
-        parts = [];
-        root = null;
-      } else {
-        throw "Couldn't parse symbol `" + symb + "`"
-      }
-    } else {
-      part += ch;
-    }
-    ch = symb[pos++];
+  var name = symb.name,
+      ns = "",
+      root = "",
+      parts = [],
+      ns_parts = name.split(/\//);
+
+  if (ns_parts.length > 1 && ns_parts[0] !== "") {
+    ns = ns_parts[0];
+    name = ns_parts.slice(1).join("");
   }
 
-  if (root === null) {
-    root = part;
+  if (name.match(/^\.+$/)) {
+    root = name;
   } else {
-    parts.push(part);
+    var name_parts = name.split(/\./);
+    root = name_parts[0];
+    parts = name_parts.slice(1);
   }
 
-  return {
-    namespace: ns,
-    root: root,
-    parts: parts
-  }
+  return { namespace: ns, root: root, parts: parts };
 }
 
 // Shared declaration checks
@@ -5706,7 +5668,7 @@ function declaration_guard (env, kind, id) {
     throw "First argument to " + kind + " must be symbol."
   }
 
-  var parsed_id = parseSymbol(id.name);
+  var parsed_id = parseSymbol(id);
 
   if (parsed_id.namespace) {
     throw "Cannot " + kind + " into another namespace."
@@ -5815,7 +5777,7 @@ builtins = {
           throw "Invalid formal arg " + arg;
         }
 
-        var parsed_arg = parseSymbol(arg.name);
+        var parsed_arg = parseSymbol(arg);
 
         if (parsed_arg.parts.length === 0) {
           if (parsed_arg.root == "&") {
@@ -5825,7 +5787,7 @@ builtins = {
               throw "Invalid rest arg " + rest_arg;
             }
 
-            var parsed_rest_arg = parseSymbol(rest_arg.name);
+            var parsed_rest_arg = parseSymbol(rest_arg);
 
             if (parsed_rest_arg.parts.length !== 0) {
               throw "Invalid rest arg " + rest_arg;
@@ -5922,7 +5884,7 @@ builtins = {
     var symbs = Array.prototype.slice.call(arguments, 1);
 
     symbs.forEach(function (symb) {
-      var parsed_symb = parseSymbol(symb.name);
+      var parsed_symb = parseSymbol(symb);
 
       if (parsed_symb.parts.length > 0 || parsed_symb.namespace) {
         throw "Cannot declare " + symb.name
@@ -6094,7 +6056,7 @@ walk_handlers = {
 
     if (head && isSymbol(head)) {
 
-      var parsed_head = parseSymbol(head.name);
+      var parsed_head = parseSymbol(head);
 
       if (parsed_head.root == "") {
         walker = walker(env);
@@ -6198,7 +6160,7 @@ walk_handlers = {
         [Terr.Literal(node.name)]
       ));
     } else if (env.quoted == "syntax") {
-      var parsed_node = parseSymbol(node.name);
+      var parsed_node = parseSymbol(node);
       var resolved = env.resolveSymbol(parsed_node);
 
       walker = walker(env.setQuoted(false));
@@ -6223,7 +6185,7 @@ walk_handlers = {
       ));
     }
 
-    var parsed_node = parseSymbol(node.name);
+    var parsed_node = parseSymbol(node);
     var resolved = env.resolveSymbol(parsed_node);
 
     if (!resolved) {

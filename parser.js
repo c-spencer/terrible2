@@ -55,33 +55,6 @@ function mungeSymbol (str) {
     });
 }
 
-function parseSymbol (symb) {
-  if (!isSymbol(symb)) {
-    throw "Cannot parseSymbol non-symbol " + symb
-  }
-
-  var name = symb.name,
-      ns = "",
-      root = "",
-      parts = [],
-      ns_parts = name.split(/\//);
-
-  if (ns_parts.length > 1 && ns_parts[0] !== "") {
-    ns = ns_parts[0];
-    name = ns_parts.slice(1).join("");
-  }
-
-  if (name.match(/^\.+$/)) {
-    root = name;
-  } else {
-    var name_parts = name.split(/\./);
-    root = name_parts[0];
-    parts = name_parts.slice(1);
-  }
-
-  return { namespace: ns, root: root, parts: parts };
-}
-
 function declaration_val (val, walker, env, name) {
   if (val !== undefined) {
     val = walker(env)(val);
@@ -112,7 +85,7 @@ builtins = {
 
       if (!isSymbol(id)) { throw "Var binding must be a symbol."; }
 
-      var parsed_id = parseSymbol(id),
+      var parsed_id = id.parse(),
           munged_name = mungeSymbol(parsed_id.root),
           metadata = extend({ private: true }, id.$metadata);
 
@@ -192,7 +165,7 @@ builtins = {
           throw "Invalid formal arg " + arg;
         }
 
-        var parsed_arg = parseSymbol(arg);
+        var parsed_arg = arg.parse();
 
         if (parsed_arg.parts.length === 0) {
           if (parsed_arg.root == "&") {
@@ -202,7 +175,7 @@ builtins = {
               throw "Invalid rest arg " + rest_arg;
             }
 
-            var parsed_rest_arg = parseSymbol(rest_arg);
+            var parsed_rest_arg = rest_arg.parse();
 
             if (parsed_rest_arg.parts.length !== 0) {
               throw "Invalid rest arg " + rest_arg;
@@ -299,7 +272,7 @@ builtins = {
     var symbs = Array.prototype.slice.call(arguments, 1);
 
     symbs.forEach(function (symb) {
-      var parsed_symb = parseSymbol(symb);
+      var parsed_symb = symb.parse();
 
       if (parsed_symb.parts.length > 0 || parsed_symb.namespace) {
         throw "Cannot declare " + symb.name
@@ -471,7 +444,7 @@ walk_handlers = {
 
     if (head && isSymbol(head)) {
 
-      var parsed_head = parseSymbol(head);
+      var parsed_head = head.parse();
 
       if (parsed_head.root == "") {
         walker = walker(env);
@@ -508,8 +481,7 @@ walk_handlers = {
           Terr: Terr,
           extend: extend,
           builtins: builtins,
-          mungeSymbol: mungeSymbol,
-          parseSymbol: parseSymbol
+          mungeSymbol: mungeSymbol
         }].concat(tail)));
       } else if (resolved.metadata['macro']) {
         return _loc(walker(env)(resolved.value.apply(null, tail)));
@@ -575,7 +547,7 @@ walk_handlers = {
         [Terr.Literal(node.name)]
       ));
     } else if (env.quoted == "syntax") {
-      var parsed_node = parseSymbol(node);
+      var parsed_node = node.parse();
       var resolved = env.resolveSymbol(parsed_node);
 
       walker = walker(env.setQuoted(false));
@@ -600,7 +572,7 @@ walk_handlers = {
       ));
     }
 
-    var parsed_node = parseSymbol(node);
+    var parsed_node = node.parse();
     var resolved = env.resolveSymbol(parsed_node);
 
     if (!resolved) {

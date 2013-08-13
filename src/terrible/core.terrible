@@ -11,6 +11,18 @@
 (def keyword (lambda [name]
   (Keyword name)))
 
+(def ^:terr-macro quote
+  (lambda [opts arg]
+    ((opts.walker (opts.env.setQuoted "quote")) arg)))
+
+(def ^:terr-macro syntax-quote
+  (lambda [opts arg]
+    ((opts.walker (opts.env.setQuoted "syntax")) arg)))
+
+(def ^:terr-macro unquote
+  (lambda [opts arg]
+    ((opts.walker (opts.env.setQuoted false)) arg)))
+
 (def ^:macro fn
   (lambda [& body]
     `(lambda ~@body)))
@@ -61,22 +73,7 @@
 (unary-operator xor "~")
 (unary-operator type "typeof")
 
-; Core terr macros
-
-(terr-macro throw [opts arg]
-  (opts.Terr.Throw ((opts.walker opts.env) arg)))
-
-(terr-macro js-for [opts init test update & body]
-  (var env (opts.env.newScope true false))
-  (var walker (opts.walker env))
-
-  (opts.Terr.For
-    (walker `(var ~@init))
-    (walker test)
-    (walker update)
-    (opts.Terr.Seq (body.map walker))))
-
-; Core library
+; Type checks
 
 (defn list? [l]
   (instance? l List))
@@ -96,6 +93,40 @@
 (defn object? [o]
   (and (not= nil o)
        (= (type o) "object")))
+
+; Core terr macros
+
+(terr-macro if [opts test cons alt]
+  (var walker (opts.walker opts.env))
+
+  (opts.Terr.If (walker test) (walker cons) (walker alt)))
+
+(terr-macro throw [opts arg]
+  (opts.Terr.Throw ((opts.walker opts.env) arg)))
+
+(terr-macro js-for [opts init test update & body]
+  (var env (opts.env.newScope true false)
+       walker (opts.walker env))
+
+  (opts.Terr.For
+    (walker `(var ~@init))
+    (walker test)
+    (walker update)
+    (opts.Terr.Seq (body.map walker))))
+
+(terr-macro js-for-in [opts left right & body]
+  (var env (opts.env.newScope true false)
+       walker (opts.walker env))
+
+  (if (not (symbol? left))
+    (throw "Left binding in js-for-in must be a symbol."))
+
+  (opts.Terr.ForIn
+    (walker `(var ~left))
+    (walker right)
+    (opts.Terr.Seq (body.map walker))))
+
+; Core library
 
 (defmacro varfn [name & body]
   `(var ~name (fn ~@body)))

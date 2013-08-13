@@ -488,36 +488,6 @@ builtins = {
     return Terr.Seq(args.map(walker));
   },
 
-  "js-for-in": function (opts, left, right) {
-    var walker = opts.walker,
-        env = opts.env;
-
-    env = env.newScope(true, false);
-
-    var walker = walker(env);
-
-    if (!isSymbol(left)) {
-      throw "Left binding in js-for-in must be symbol."
-    }
-
-    var left = walker(core.list(core.symbol('var'), left));
-    var right = walker(right);
-    var body = Terr.Seq(Array.prototype.slice.call(arguments, 3).map(walker));
-
-    return Terr.ForIn(left, right, body);
-  },
-
-  // (while (< i 10) (inc i))
-
-  "if": function (opts, test, cons, alt) {
-    var walker = opts.walker,
-        env = opts.env;
-
-    walker = walker(env);
-
-    return Terr.If(walker(test), walker(cons), walker(alt));
-  },
-
   ".": function (opts, target, member) {
     var args = Array.prototype.slice.call(arguments, 3);
     var walker = opts.walker(opts.env);
@@ -572,14 +542,6 @@ builtins = {
     return Terr.Try(body, Terr.Identifier(munged_name), Terr.Seq(catch_body), undefined);
   },
 
-  "quote": function (opts, arg) {
-    return opts.walker(opts.env.setQuoted("quote"))(arg);
-  },
-
-  "unquote": function (opts, arg) {
-    return opts.walker(opts.env.setQuoted(false))(arg);
-  },
-
   "unquote-splicing": function (opts, arg) {
     if (opts.env.quoted != "syntax") {
       throw "Cannot call unquote-splicing outside of syntax-quote."
@@ -587,10 +549,6 @@ builtins = {
     var result = opts.walker(opts.env.setQuoted(false))(arg);
 
     return Terr.Splice(result);
-  },
-
-  "syntax-quote": function (opts, arg) {
-    return opts.walker(opts.env.setQuoted("syntax"))(arg);
   }
 }
 

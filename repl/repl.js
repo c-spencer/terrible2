@@ -41,6 +41,9 @@ function compileTerrible(text) {
     parsed.figure_out_scope();
     var compressor = UglifyJS.Compressor({});
     var compressed = parsed.transform(compressor);
+    // compressed.figure_out_scope();
+    // compressed.compute_char_frequency();
+    // compressed.mangle_names();
     js = compressed.print_to_string({beautify: true});
   }
 

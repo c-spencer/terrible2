@@ -27,6 +27,40 @@
     (set! macro-name.$metadata :terr-macro)
     `(def ~macro-name (fn ~@body))))
 
+; Useful utilities
+
+(defmacro defn [name & body]
+  `(def ~name (fn ~@body)))
+
+; js operators
+
+(defmacro binary-operator [symb op]
+  `(terr-macro ~symb [opts# ~'& args#]
+    (~'.reduce (args#.map (opts#.walker opts#.env))
+      (fn [left# right#] (opts#.Terr.Binary left# ~op right#)))))
+
+(defmacro unary-operator [symb op]
+  `(terr-macro ~symb [opts# arg#]
+    (opts#.Terr.Unary ~op ((opts#.walker opts#.env) arg#))))
+
+(binary-operator + "+")
+(binary-operator = "===")
+(binary-operator - "-")
+(binary-operator not= "!==")
+(binary-operator or "||")
+(binary-operator and "&&")
+(binary-operator > ">")
+(binary-operator >= ">=")
+(binary-operator < "<")
+(binary-operator <= "<=")
+(binary-operator / "/")
+(binary-operator instance? "instanceof")
+(binary-operator mod "%")
+
+(unary-operator not "!")
+(unary-operator xor "~")
+(unary-operator type "typeof")
+
 ; Core terr macros
 
 (terr-macro throw [opts arg]
@@ -43,18 +77,6 @@
     (opts.Terr.Seq (body.map walker))))
 
 ; Core library
-
-(defmacro defn [name & body]
-  `(def ~name (fn ~@body)))
-
-(defmacro varfn [name & body]
-  `(var ~name (fn ~@body)))
-
-(defmacro setfn! [name & body]
-  `(set! ~name (fn ~@body)))
-
-(defmacro when [cond & body]
-  `(if ~cond (do ~@body)))
 
 (defn list? [l]
   (instance? l List))
@@ -74,6 +96,15 @@
 (defn object? [o]
   (and (not= nil o)
        (= (type o) "object")))
+
+(defmacro varfn [name & body]
+  `(var ~name (fn ~@body)))
+
+(defmacro setfn! [name & body]
+  `(set! ~name (fn ~@body)))
+
+(defmacro when [cond & body]
+  `(if ~cond (do ~@body)))
 
 (defmacro cond [t v & cases]
   (if (and (keyword? t)

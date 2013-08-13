@@ -90,6 +90,7 @@ Environment.prototype.evalText = function (text, error_cb) {
       if (error_cb) {
         error_cb(form, form.$text, exception);
       } else {
+        console.log(exception, exception.stack);
         results.push({
           form: form,
           text: form.$text,

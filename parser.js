@@ -45,29 +45,6 @@ function mungeSymbol (str) {
     });
 }
 
-function reduceBinaryOperator (values, op) {
-  var left = values[0];
-  var i = 1;
-  while (i < values.length) {
-    left = Terr.Binary(left, op, values[i]);
-    i += 1;
-  }
-  return left;
-}
-
-function makeBinary (op) {
-  return function (opts) {
-    var args = Array.prototype.slice.call(arguments, 1);
-    return reduceBinaryOperator(args.map(opts.walker(opts.env)), op)
-  }
-}
-
-function makeUnary (op) {
-  return function (opts, arg) {
-    return Terr.Unary(op, opts.walker(opts.env)(arg));
-  }
-}
-
 function parseSymbol (symb) {
   var pos = 0;
   var ch = symb[pos++];
@@ -195,24 +172,6 @@ function declaration_val (val, walker, env, name) {
 }
 
 builtins = {
-
-  '=': makeBinary('==='),
-  '+': makeBinary('+'),
-  '-': makeBinary('-'),
-  'not=': makeBinary('!=='),
-  'or': makeBinary('||'),
-  'and': makeBinary('&&'),
-  '>': makeBinary('>'),
-  '>=': makeBinary('>='),
-  '<': makeBinary('<'),
-  '<=': makeBinary('<='),
-  '/': makeBinary('/'),
-  'instance?': makeBinary('instanceof'),
-  'mod': makeBinary('%'),
-
-  'not': makeUnary('!'),
-  'xor': makeUnary('~'),
-  'type': makeUnary('typeof'),
 
   'new': function (opts, callee) {
     var args = Array.prototype.slice.call(arguments, 2);
@@ -502,7 +461,6 @@ builtins = {
     } else {
       return Terr.Seq(seq);
     }
-
   },
 
   // Open a new logical scope, but not a new javascript scope, to allow block

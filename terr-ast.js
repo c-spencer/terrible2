@@ -190,7 +190,7 @@ var compilers = {
         Terr.Member(Terr.Identifier("$ENV"), Terr.Literal("set")),
         [ Terr.Literal(node.namespace),
           Terr.Literal(node.name),
-          node.value ]
+          node.value || Terr.Identifier('undefined') ]
       ), mode);
     }
   },

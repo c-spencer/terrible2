@@ -292,6 +292,13 @@ builtins = {
       var js_name = munged_ns + munged_name;
     }
 
+    if (id.$metadata) {
+      var metadata = id.$metadata;
+      var macro = isKeyword(metadata) && metadata.name == "macro";
+    } else {
+      var macro = false;
+    }
+
     var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
 
     env.scope.addSymbol(munged_name, {
@@ -299,7 +306,8 @@ builtins = {
       accessor: accessor,
       js_name: js_name,
       export: true,
-      top_level: true
+      top_level: true,
+      macro: macro
     });
 
     val = declaration_val(val, walker, env, munged_name);
@@ -780,11 +788,8 @@ walk_handlers = {
 
       var resolved = resolveSymbol(env, parsed_head);
 
-      if (resolved.value) {
-        var m = resolved.value;
-        if (m.$macro === true && typeof m === "function") {
-          return _loc(walker(env)(m.apply(null, tail)));
-        }
+      if (resolved.macro) {
+        return _loc(walker(env)(resolved.value.apply(null, tail)));
       }
 
       if (resolved === false) {

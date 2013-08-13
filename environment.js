@@ -84,10 +84,8 @@ Environment.prototype.evalText = function (text, error_cb) {
 
       results.push(processed);
 
-      if (!processed.value || !processed.value.$macro) {
-        this.current_namespace.ast_nodes =
-          this.current_namespace.ast_nodes.concat(nodes);
-      }
+      this.current_namespace.ast_nodes =
+        this.current_namespace.ast_nodes.concat(nodes);
     } catch (exception) {
       if (error_cb) {
         error_cb(form, form.$text, exception);

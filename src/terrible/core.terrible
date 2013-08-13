@@ -6,18 +6,15 @@
 (def symbol (lambda [name]
   (Symbol name)))
 
-(var set-macro
-  (lambda [f]
-    (set! f.$macro true)
-    f))
+(def keyword (lambda [name]
+  (Keyword name)))
 
-(def macro (set-macro
-  (lambda [& body]
-    `(set-macro (lambda ~@body)))))
+(def ^:macro defmacro
+  (lambda [name & body]
+    (var macro-name (symbol name.name))
+    (set! macro-name.$metadata :macro)
+    `(def ~macro-name (lambda ~@body))))
 
-(def defmacro
-  (macro [name & body]
-    `(def ~name (macro ~@body))))
 
 (defmacro fn [& body]
   `(lambda ~@body))
@@ -36,9 +33,6 @@
 
 (defn symbol? [s]
   (instance? s Symbol))
-
-(defn keyword [name]
-  (Keyword name))
 
 (defn keyword? [k]
   (instance? k Keyword))

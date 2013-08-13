@@ -24,14 +24,6 @@ function Environment (target, interactive) {
   this.target = target || "node";
 
   this.scope = new Namespace.Scope();
-  this.scope.expose('Array', Array);
-  this.scope.expose('Function', Function);
-  this.scope.expose('Object', Object);
-  this.scope.expose('Number', Number);
-  this.scope.expose('String', String);
-
-  this.scope.expose('JSON', JSON);
-  this.scope.expose('console', console);
 
   this.scope.expose('List', core.list);
   this.scope.expose('Symbol', core.symbol);

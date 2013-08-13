@@ -2,6 +2,9 @@
 
 ; Required bindings assumed by macros
 
+; needed early for var args
+(var ^:external Array)
+
 (var ^{:private false} list (lambda [& args]
   (List.apply nil args)))
 
@@ -36,6 +39,13 @@
     (var macro-name (symbol name.name))
     (set! macro-name.$metadata {:macro true})
     `(def ~macro-name (fn ~@body))))
+
+(defmacro extern [& symbs]
+  (symbs.forEach (fn [s] (set! s.$metadata {:external true})))
+  `(var ~@symbs))
+
+; Grab some core JavaScript objects
+(extern Function Object Number String JSON console)
 
 (def ^:macro terr-macro
   (fn [name & body]
@@ -170,10 +180,6 @@
     (opts.Terr.Seq (body.map walker))))
 
 ; Core library
-
-(defmacro extern [& symbs]
-  (symbs.forEach (fn [s] (set! s.$metadata {:external true})))
-  `(var ~@symbs))
 
 (defmacro varfn [name & body]
   `(var ~name (fn ~@body)))

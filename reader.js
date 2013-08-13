@@ -206,7 +206,15 @@ function stringReader (buffer, quote) {
 
 dispatchReader = function (buffer, hash) {
   var ch = buffer.read1();
-  return this.dispatch_macros[ch].call(this, buffer, ch);
+  if (this.dispatch_macros[ch]) {
+    return this.dispatch_macros[ch].call(this, buffer, ch);
+  } else {
+    if (buffer.dispatch_handler) {
+      return buffer.dispatch_handler(this, this.readToken(buffer, ch), buffer);
+    } else {
+      throw "dispatch on symbol but no Buffer dispatch_handler"
+    }
+  }
 }
 
 function findArg (reader, n) {
@@ -521,29 +529,28 @@ Reader.prototype.newReadSession = function () {
 
   return {
     buffer: buffer,
-    readString: function (str) {
+    readString: function (str, form_handler, dispatch_handler) {
       buffer.append(str);
+      buffer.dispatch_handler = dispatch_handler;
       var forms = [], buffer_state;
       try {
         buffer_state = buffer.save();
         while (form = reader.read(buffer)) {
-          forms.push(form);
 
           form.$text = buffer.string.substring(buffer_state.pos, buffer.pos);
+          form_handler(null, form);
 
           buffer_state = buffer.save();
         }
       } catch (exception) {
         if (exception instanceof EOFError) {
           buffer.restore(buffer_state);
-          return forms;
+          return;
         } else {
-          buffer.restore(buffer_state);
-          forms.$exception = exception;
-          return forms;
+          form_handler(exception);
+          return;
         }
       }
-      return forms;
     }
   }
 }

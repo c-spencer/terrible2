@@ -70,14 +70,21 @@ Environment.prototype.getNamespace = function (name) {
 };
 
 Environment.prototype.evalText = function (text, error_cb) {
-  var forms = this.readSession.readString(text);
+  var that = this;
 
   var results = [];
 
-  for (var i = 0, len = forms.length; i < forms.length; ++i) {
-    var form = forms[i];
+  var forms = this.readSession.readString(text, function (err, form) {
+
+    if (err) {
+      var text = that.readSession.buffer.remaining().trim();
+      that.readSession.buffer.truncate();
+      results.push({ text: text, exception: err });
+      return;
+    }
+
     try {
-      var processed = parser.process(form, this, false);
+      var processed = parser.process(form, that, false);
       processed.form = form;
       processed.text = form.$text;
 
@@ -85,8 +92,8 @@ Environment.prototype.evalText = function (text, error_cb) {
 
       results.push(processed);
 
-      this.current_namespace.ast_nodes =
-        this.current_namespace.ast_nodes.concat(nodes);
+      that.current_namespace.ast_nodes =
+        that.current_namespace.ast_nodes.concat(nodes);
     } catch (exception) {
       if (error_cb) {
         error_cb(form, form.$text, exception);
@@ -99,13 +106,20 @@ Environment.prototype.evalText = function (text, error_cb) {
         });
       }
     }
-  }
 
-  if (forms.$exception) {
-    var text = this.readSession.buffer.remaining().trim();
-    this.readSession.buffer.truncate();
-    results.push({ text: text, value: forms.$exception });
-  }
+  }, function (reader, token, buffer) {
+    var resolved = that.current_namespace.scope.resolve(parser.mungeSymbol(token.name));
+    if (resolved && resolved.reader_macro) {
+      try {
+        return resolved.value(reader, buffer);
+      } catch (exc) {
+        console.log(exc, exc.stack);
+      }
+    } else {
+      console.log("Couldn't resolve dispatcher for ", token)
+      throw "Couldn't resolve dispatcher for " + token
+    }
+  });
 
   return results;
 };
@@ -5820,9 +5834,11 @@ builtins = {
       var metadata = id.$metadata;
       var macro = isKeyword(metadata) && metadata.name == "macro";
       var terr_macro = isKeyword(metadata) && metadata.name == "terr-macro";
+      var reader_macro = isKeyword(metadata) && metadata.name == "reader-macro";
     } else {
       var macro = false;
       var terr_macro = false;
+      var reader_macro = false;
     }
 
     var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
@@ -5834,7 +5850,8 @@ builtins = {
       export: true,
       top_level: true,
       macro: macro,
-      terr_macro: terr_macro
+      terr_macro: terr_macro,
+      reader_macro: reader_macro
     });
 
     val = declaration_val(val, walker, env, munged_name);
@@ -6442,6 +6459,7 @@ function process_form (form, env, quoted) {
 }
 
 exports.process = process_form;
+exports.mungeSymbol = mungeSymbol;
 
 })()
 },{"./core":3,"./js":4,"./terr-ast":22,"./walker":23,"escodegen":6}],20:[function(require,module,exports){
@@ -6653,7 +6671,15 @@ function stringReader (buffer, quote) {
 
 dispatchReader = function (buffer, hash) {
   var ch = buffer.read1();
-  return this.dispatch_macros[ch].call(this, buffer, ch);
+  if (this.dispatch_macros[ch]) {
+    return this.dispatch_macros[ch].call(this, buffer, ch);
+  } else {
+    if (buffer.dispatch_handler) {
+      return buffer.dispatch_handler(this, this.readToken(buffer, ch), buffer);
+    } else {
+      throw "dispatch on symbol but no Buffer dispatch_handler"
+    }
+  }
 }
 
 function findArg (reader, n) {
@@ -6968,29 +6994,28 @@ Reader.prototype.newReadSession = function () {
 
   return {
     buffer: buffer,
-    readString: function (str) {
+    readString: function (str, form_handler, dispatch_handler) {
       buffer.append(str);
+      buffer.dispatch_handler = dispatch_handler;
       var forms = [], buffer_state;
       try {
         buffer_state = buffer.save();
         while (form = reader.read(buffer)) {
-          forms.push(form);
 
           form.$text = buffer.string.substring(buffer_state.pos, buffer.pos);
+          form_handler(null, form);
 
           buffer_state = buffer.save();
         }
       } catch (exception) {
         if (exception instanceof EOFError) {
           buffer.restore(buffer_state);
-          return forms;
+          return;
         } else {
-          buffer.restore(buffer_state);
-          forms.$exception = exception;
-          return forms;
+          form_handler(exception);
+          return;
         }
       }
-      return forms;
     }
   }
 }

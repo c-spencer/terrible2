@@ -255,9 +255,11 @@ builtins = {
       var metadata = id.$metadata;
       var macro = isKeyword(metadata) && metadata.name == "macro";
       var terr_macro = isKeyword(metadata) && metadata.name == "terr-macro";
+      var reader_macro = isKeyword(metadata) && metadata.name == "reader-macro";
     } else {
       var macro = false;
       var terr_macro = false;
+      var reader_macro = false;
     }
 
     var accessor = Terr.NamespaceGet(ns_name, munged_name, js_name);
@@ -269,7 +271,8 @@ builtins = {
       export: true,
       top_level: true,
       macro: macro,
-      terr_macro: terr_macro
+      terr_macro: terr_macro,
+      reader_macro: reader_macro
     });
 
     val = declaration_val(val, walker, env, munged_name);
@@ -877,3 +880,4 @@ function process_form (form, env, quoted) {
 }
 
 exports.process = process_form;
+exports.mungeSymbol = mungeSymbol;

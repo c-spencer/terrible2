@@ -237,7 +237,7 @@ builtins = {
 
     for (var i = 0, len = settings.length; i < len; i += 2) {
       var o_left = settings[i],
-          left = walker(left),
+          left = walker(o_left),
           right = walker(settings[i + 1]);
 
       if (isSymbol(o_left)) {

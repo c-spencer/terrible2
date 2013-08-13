@@ -102,8 +102,30 @@
 
 (terr-macro if [opts test cons alt]
   (var walker (opts.walker opts.env))
-
   (opts.Terr.If (walker test) (walker cons) (walker alt)))
+
+; Open a new logical scope, but not a new javascript scope, to allow block
+; insertion to work as expected.
+(terr-macro do [opts & body]
+  (var walker (opts.walker (opts.env.newScope true false)))
+  (opts.Terr.Seq (body.map walker)))
+
+; As do, but no new scope.
+; stop-gap until public vars can jump up scopes
+(terr-macro do-noscope [opts & body]
+  (var walker (opts.walker opts.env))
+  (opts.Terr.Seq (body.map walker)))
+
+(terr-macro get [opts target arg]
+  (var walker (opts.walker opts.env))
+  (opts.Terr.Member (walker target) (walker arg)))
+
+(terr-macro return [opts arg]
+  (opts.Terr.Return ((opts.walker opts.env) arg)))
+
+(terr-macro new [opts callee & args]
+  (var walker (opts.walker opts.env))
+  (opts.Terr.New (walker callee) (args.map walker)))
 
 (terr-macro throw [opts arg]
   (opts.Terr.Throw ((opts.walker opts.env) arg)))

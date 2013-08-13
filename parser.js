@@ -183,22 +183,6 @@ function declaration_val (val, walker, env, name) {
 
 builtins = {
 
-  'new': function (opts, callee) {
-    var args = Array.prototype.slice.call(arguments, 2);
-    var walker = opts.walker(opts.env);
-    return Terr.New(walker(callee), args.map(walker));
-  },
-
-  'return': function (opts, arg) {
-    var walker = opts.walker(opts.env);
-    return Terr.Return(arg ? walker(arg) : undefined);
-  },
-
-  'get': function (opts, target, arg) {
-    var walker = opts.walker(opts.env);
-    return Terr.Member(walker(target), walker(arg));
-  },
-
   "var": function (opts) {
     var walker = opts.walker,
         env = opts.env,
@@ -453,47 +437,6 @@ builtins = {
     } else {
       return Terr.Seq(seq);
     }
-  },
-
-  // Open a new logical scope, but not a new javascript scope, to allow block
-  // insertion to work as expected.
-  "do": function (opts) {
-    var walker = opts.walker,
-        env = opts.env;
-
-    env = env.newScope(true, false);
-
-    walker = walker(env);
-
-    var args = Array.prototype.slice.call(arguments, 1);
-
-    return Terr.Seq(args.map(walker));
-  },
-
-  // As do, but no new scope.
-  // stop-gap until def can jump up scopes
-  "do-noscope": function (opts) {
-    var walker = opts.walker(opts.env);
-
-    var args = Array.prototype.slice.call(arguments, 1);
-
-    return Terr.Seq(args.map(walker));
-  },
-
-  ".": function (opts, target, member) {
-    var args = Array.prototype.slice.call(arguments, 3);
-    var walker = opts.walker(opts.env);
-
-    var parsed_member = parseSymbol(member.name);
-
-    if (parsed_member.parts.length > 0 || parsed_member.namespace) {
-      throw "Cannot . access " + member.name
-    }
-
-    return Terr.Call(
-      Terr.Member(walker(target), Terr.Literal(parsed_member.root)),
-      args.map(walker)
-    );
   },
 
   "try": function (opts) {

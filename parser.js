@@ -4,15 +4,10 @@ var JS = require('./js')
 var codegen = require('escodegen')
 var Terr = require('./terr-ast')
 
-function isSymbol(s) {
-  return s instanceof core.symbol;
-}
-function isKeyword(s) {
-  return s instanceof core.keyword;
-}
-function isList(s) {
-  return s instanceof core.list;
-}
+function isSymbol(s)  { return s instanceof core.symbol; }
+function isKeyword(s) { return s instanceof core.keyword; }
+function isList(s)    { return s instanceof core.list; }
+function slice (a, i) { return Array.prototype.slice.call(a, i); }
 
 function extend(left, right) {
   left = left || {};
@@ -68,7 +63,7 @@ builtins = {
         ns_name = env.env.current_namespace.name,
         munged_ns = mungeSymbol(ns_name.replace(/\./g, '$')) + "$",
         decls = [],
-        inputs = Array.prototype.slice.call(arguments, 1);
+        inputs = slice(arguments, 1);
 
     for (var i = 0; i < inputs.length; i += 2) {
       var id = inputs[i],
@@ -203,15 +198,15 @@ builtins = {
       return Terr.SubFn(formal_args, terr_body, formal_args.length, rest_arg != null);
     }; // end compile_fn
 
-    var forms = isList(args) ? Array.prototype.slice.call(arguments, 1)
-                             : [core.list.apply(null,
-                                  Array.prototype.slice.call(arguments, 1))],
+    var forms =
+          isList(args) ? slice(arguments, 1).map(function (list) { return list.values; })
+                       : [[args].concat(slice(arguments, 2))],
         arity_map = {},
         arities = [],
         variadic = null;
 
     forms.forEach(function (form, i) {
-      var compiled = compile_fn(form.values[0], form.values.slice(1));
+      var compiled = compile_fn(form[0], form.slice(1));
 
       if (compiled.variadic) {
         if (i !== forms.length - 1) {
@@ -243,7 +238,7 @@ builtins = {
     var walker = opts.walker,
         env = opts.env;
 
-    var settings = Array.prototype.slice.call(arguments, 1);
+    var settings = slice(arguments, 1);
 
     if (settings.length % 2) {
       throw "set! takes an even number of arguments"

@@ -5984,13 +5984,16 @@ walk_handlers = {
       return loc(node, form);
     }
 
-    var head = node.values[0];
-    var tail = node.values.slice(1);
+    var head = node.values[0],
+        tail = node.values.slice(1),
+        o_walker = walker,
+        walker = walker(env);
 
+    // Quoting
     if (env.quoted && (!isSymbol(head) || (head.name !== 'unquote' &&
                                            head.name !== "unquote-splicing"))) {
-      var values = node.values.map(walker(env)),
-          list_symb = walker(env.setQuoted(false))(
+      var values = node.values.map(walker),
+          list_symb = o_walker(env.setQuoted(false))(
             core.list(core.symbol('terrible.core/list'))
           );
 
@@ -6016,41 +6019,41 @@ walk_handlers = {
       }
     }
 
+    // Symbol dispatch
     if (head && isSymbol(head)) {
 
-      var parsed_head = head.parse();
+      var parsed_head = head.parse(),
+          name = parsed_head.root;
 
+      // (.concat [1 2 3] [4 5 6])
       if (parsed_head.root == "") {
-        walker = walker(env);
-        var target = walker(tail[0]);
-        tail = tail.slice(1).map(walker);
+        var target = parsed_head.parts.reduce(function (left, right) {
+          return Terr.Member(left, Terr.Literal(right));
+        }, walker(tail[0]));
 
-        parsed_head.parts.forEach(function (p) {
-          target = Terr.Member(target, walker(p));
-        });
-
-        return _loc(Terr.Call(target, tail));
+        return _loc(Terr.Call(target, tail.slice(1).map(walker)));
       }
 
+      // (a.b 1 2 3)
       if (parsed_head.parts.length > 0) {
-        walker = walker(env);
         return _loc(Terr.Call(walker(head), tail.map(walker)));
       }
 
-      var name = parsed_head.root;
-
+      // (var a 5)
       if (builtins[name]) {
         return _loc(builtins[name].apply(null, [{
-          walker: walker,
+          walker: o_walker,
           env: env
         }].concat(tail)));
       }
 
       var resolved = env.resolveSymbol(parsed_head);
+      if (resolved === false) { throw "Couldn't resolve " + name; }
 
+      // terr-macros and macros
       if (resolved.metadata['terr-macro']) {
         return _loc(resolved.value.apply(null, [{
-          walker: walker,
+          walker: o_walker,
           env: env,
           Terr: Terr,
           extend: extend,
@@ -6058,54 +6061,34 @@ walk_handlers = {
           mungeSymbol: mungeSymbol
         }].concat(tail)));
       } else if (resolved.metadata['macro']) {
-        return _loc(walker(env)(resolved.value.apply(null, tail)));
+        return _loc(walker(resolved.value.apply(null, tail)));
       }
 
-      if (resolved === false) {
-        throw "Couldn't resolve " + name;
-      }
-
-      walker = walker(env);
-
+      // Check arities match and specialise for multi-arity functions.
       if (resolved.node && resolved.node.type == "Fn") {
+        var fn_node = resolved.node,
+            target = walker(head);
 
-        var fn_node = resolved.node;
-
-        var target = walker(head);
-
-        if (env.env.interactive) {
-          // arities could change out underneath us, so don't specialise here
-        } else if (fn_node.arities.length == 1) { // mono-arity, no sub-dispatch
-          if (fn_node.variadic !== null) {
-            if (tail.length < fn_node.variadic) {
-              throw "Function `" + name + "` expects at least " + fn_node.variadic + " arguments, but " + tail.length + " provided."
-            }
-          } else { // monadic
-            if (fn_node.arities[0] != tail.length) {
-              throw "Function `" + name + "` expects " + fn_node.arities[0] + " arguments, " + tail.length + " provided."
-            }
-          }
-        } else { // multi-arity
-          if (~fn_node.arities.indexOf(tail.length)) {
+        if (~fn_node.arities.indexOf(tail.length)) {
+          // Don't specialise the call if interactive, as it could change underneath us.
+          if (!env.env.interactive && fn_node.arities.length > 1) {
             target = Terr.Member(target, Terr.Literal("$" + tail.length));
-          } else { // no straight arity
-            if (fn_node.variadic && tail.length >= fn_node.variadic) {
-              target = Terr.Member(target, Terr.Literal("$_"));
-            } else {
-              throw "Function `" + name + "` expects " + fn_node.arities + " arguments, " + tail.length + " provided."
-            }
           }
+        } else if (fn_node.variadic != null && tail.length >= fn_node.variadic) {
+          if (!env.env.interactive && fn_node.arities.length > 1) {
+            target = Terr.Member(target, Terr.Literal("$_"));
+          }
+        } else {
+          throw "Function `" + name + "` expects " + fn_node.arities +
+                " arguments, " + tail.length + " provided."
         }
-      } else if (resolved.type == "any") {
-
-      } else {
+      } else if (resolved.type != "any") {
         throw "Cannot call " + resolved.type + " `" + name + "` as function."
       }
 
       return _loc(Terr.Call(loc(head, target || walker(head)),
                             tail.map(walker)));
     } else if (head && isList(head)) {
-      var walker = walker(env);
       return _loc(Terr.Call(walker(head), tail.map(walker)));
     } else {
       throw "Cannot call `" + JSON.stringify(head) + "` as function."

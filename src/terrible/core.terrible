@@ -100,6 +100,9 @@
   (and (not== nil o)
        (== (type o) "object")))
 
+(defn vector? [v]
+  (Array.isArray v))
+
 ; Core terr macros
 
 (terr-macro if [opts test cons alt]
@@ -219,6 +222,10 @@
   (= [left right]
     (== left right)))
 
+; Avoid extra dispatch for not=
+(defn not= [left right]
+  (not (= left right)))
+
 (extend-type Keyword Equality
   (= [left right]
     (and (keyword? right)
@@ -278,3 +285,35 @@
 (extend-type Function Printable
   (print-str [f]
     (+ "#fn[" f.name "]")))
+
+(terr-macro try [opts & body]
+  (var walker opts.walker
+       env opts.env
+       catch-clause (body.pop))
+
+  (if (or (not (list? catch-clause))
+          (< catch-clause.values.length 2)
+          (not= catch-clause.values.0 'catch)
+          (not (symbol? catch-clause.values.1)))
+    (throw "Invalid catch clause"))
+
+  (var catch-arg catch_clause.values.1
+       catch-body (catch-clause.values.slice 2)
+       parsed-catch-arg (opts.parseSymbol catch-arg.name))
+
+  (if (or (> parsed-catch-arg.parts.length 0)
+          parsed-catch-arg.namespace)
+    (throw "Invalid catch arg"))
+
+  (var munged-name (opts.mungeSymbol parsed-catch-arg.root)
+       catch-env (env.newScope true false))
+
+  (catch-env.scope.addSymbol munged-name
+    {:type "any"
+     :accessor (opts.Terr.Identifier munged-name)
+     :metadata {}})
+
+  (opts.Terr.Try
+    (opts.Terr.Seq (body.map (walker env)))
+    (opts.Terr.Identifier munged-name)
+    (opts.Terr.Seq (catch-body.map (walker catch-env)))))

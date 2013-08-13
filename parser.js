@@ -439,48 +439,6 @@ builtins = {
     }
   },
 
-  "try": function (opts) {
-    var walker = opts.walker,
-        env = opts.env;
-
-    var body = Array.prototype.slice.call(arguments, 1);
-    var catch_clause = body.pop();
-
-    if (!isList(catch_clause) || catch_clause.values.length < 2 || !isSymbol(catch_clause.values[0]) || catch_clause.values[0].name !== "catch") {
-      throw "Invalid catch clause"
-    }
-
-    var catch_args = catch_clause.values[1];
-    var catch_body = catch_clause.values.slice(2);
-
-    if (!Array.isArray(catch_args) || catch_args.length !== 1 || !isSymbol(catch_args[0])) {
-      throw "Invalid catch args."
-    }
-
-    var body_walker = walker(env);
-    var body = Terr.Seq(body.map(body_walker));
-
-    var catch_arg = catch_args[0];
-    var parsed_catch_arg = parseSymbol(catch_arg.name);
-
-    if (parsed_catch_arg.parts.length > 0 || parsed_catch_arg.namespace) {
-      throw "Invalid catch arg."
-    }
-
-    var munged_name = mungeSymbol(parsed_catch_arg.root);
-
-    var catch_env = env.newScope(true, false);
-    catch_env.scope.addSymbol(munged_name, {
-      type: 'any',
-      accessor: Terr.Identifier(munged_name),
-      metadata: {}
-    });
-    var catch_walker = walker(catch_env);
-    catch_body = catch_body.map(catch_walker);
-
-    return Terr.Try(body, Terr.Identifier(munged_name), Terr.Seq(catch_body), undefined);
-  },
-
   "unquote-splicing": function (opts, arg) {
     if (opts.env.quoted != "syntax") {
       throw "Cannot call unquote-splicing outside of syntax-quote."
@@ -628,7 +586,9 @@ walk_handlers = {
           env: env,
           Terr: Terr,
           extend: extend,
-          builtins: builtins
+          builtins: builtins,
+          mungeSymbol: mungeSymbol,
+          parseSymbol: parseSymbol
         }].concat(tail)));
       } else if (resolved.metadata['macro']) {
         return _loc(walker(env)(resolved.value.apply(null, tail)));

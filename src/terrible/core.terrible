@@ -60,9 +60,11 @@
     (opts#.Terr.Unary ~op ((opts#.walker opts#.env) arg#))))
 
 (binary-operator + "+")
-(binary-operator = "===")
+(binary-operator == "===")
+(binary-operator ==? "==")
 (binary-operator - "-")
-(binary-operator not= "!==")
+(binary-operator not== "!==")
+(binary-operator not==? "!=")
 (binary-operator or "||")
 (binary-operator and "&&")
 (binary-operator > ">")
@@ -89,14 +91,14 @@
   (instance? k Keyword))
 
 (defn string? [s]
-  (= (type s) "string"))
+  (== (type s) "string"))
 
 (defn number? [s]
-  (= (type s) "number"))
+  (== (type s) "number"))
 
 (defn object? [o]
-  (and (not= nil o)
-       (= (type o) "object")))
+  (and (not== nil o)
+       (== (type o) "object")))
 
 ; Core terr macros
 
@@ -165,7 +167,7 @@
 
 (defmacro cond [t v & cases]
   (if (and (keyword? t)
-           (= t.name "else"))
+           (== t.name "else"))
     v
     (if (> cases.length 0)
       `(if ~t ~v (cond ~@cases))
@@ -212,6 +214,20 @@
           (get (get ~cls "prototype") (+ ~protocol ~n.name))
           (fn ~@(method.values.slice 1))))
       ))))
+
+(defprotocol Equality
+  (= [left right]
+    (== left right)))
+
+(extend-type Keyword Equality
+  (= [left right]
+    (and (keyword? right)
+         (== left.name right.name))))
+
+(extend-type Symbol Equality
+  (= [left right]
+    (and (symbol? right)
+         (== left.name right.name))))
 
 (defprotocol Iterable
   (map [obj func]

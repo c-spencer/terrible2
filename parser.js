@@ -385,52 +385,32 @@ walk_handlers = {
     var head = node.values[0];
     var tail = node.values.slice(1);
 
-    if (env.quoted) {
+    if (env.quoted && (!isSymbol(head) || (head.name !== 'unquote' &&
+                                           head.name !== "unquote-splicing"))) {
+      var values = node.values.map(walker(env)),
+          list_symb = walker(env.setQuoted(false))(
+            core.list(core.symbol('terrible.core/list'))
+          );
 
-      if (head && isSymbol(head) && (head.name == 'unquote' ||
-                                     head.name == "unquote-splicing")) {
-
+      if (env.quoted == "syntax") {
+        return _loc(values.reduce(function (left, right) {
+          if (right.type == "Splice") {
+            left = Terr.Call(Terr.Member(left, Terr.Literal("concat")), [right.value]);
+            left.$concat = true;
+          } else {
+            if (left.$concat) {
+              left = Terr.Call(Terr.Member(left, Terr.Literal("push")), [right]);
+            } else {
+              left.args.push(right);
+            }
+          }
+          return left;
+        }, list_symb));
       } else {
-        var quoted_walker = walker(env);
-        var unquoted_walker = walker(env.setQuoted(false));
-
-        var list_symb = unquoted_walker(core.symbol('terrible.core/list'));
-        var values = node.values.map(quoted_walker);
-
-        if (env.quoted == "syntax") {
-
-          var args = [];
-          var root = null;
-
-          var pack_args = function () {
-            if (!root) {
-              root = Terr.Call(list_symb, args);
-              args = [];
-            } else {
-              root = Terr.Call(Terr.Member(root, Terr.Literal("push")), args);
-              args = [];
-            }
-          }
-
-          values.forEach(function (v) {
-            if (v.type == "Splice") {
-              pack_args();
-              root = Terr.Call(Terr.Member(root, Terr.Literal("concat")), [v.value]);
-            } else {
-              args.push(v);
-            }
-          });
-          if (!root || args.length > 0) {
-            pack_args();
-          }
-
-          return _loc(root);
-        } else {
-          return _loc(Terr.Call(
-            list_symb,
-            values
-          ));
-        }
+        return _loc(Terr.Call(
+          list_symb,
+          values
+        ));
       }
     }
 

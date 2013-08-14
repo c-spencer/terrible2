@@ -1,4 +1,4 @@
-var Environment = require('../Environment').Environment;
+var Environment = require('../lib/environment').Environment;
 
 // INPUT OUTPUT
 

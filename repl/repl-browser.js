@@ -1,266 +1,4 @@
 ;(function(e,t,n){function i(n,s){if(!t[n]){if(!e[n]){var o=typeof require=="function"&&require;if(!s&&o)return o(n,!0);if(r)return r(n,!0);throw new Error("Cannot find module '"+n+"'")}var u=t[n]={exports:{}};e[n][0].call(u.exports,function(t){var r=e[n][1][t];return i(r?r:t)},u,u.exports)}return t[n].exports}var r=typeof require=="function"&&require;for(var s=0;s<n.length;s++)i(n[s]);return i})({1:[function(require,module,exports){
-(function(){var Namespace = require('./namespace');
-var Terr = require('./terr-ast');
-var codegen = require('escodegen');
-var JS = require('./js');
-var reader = require('./reader');
-var parser = require('./parser');
-var core = require('./core');
-var fs = require('fs');
-
-var core_js = "// Core Structures\n\n// Vector == Array\n// Map == Object\n// Literals == Number / String\n\nfunction List(values) {\n  var that = this;\n  this.values = values;\n\n  this.concat = function (arg) {\n    that.values = that.values.concat(arg);\n    return that;\n  };\n\n  this.push = function () {\n    that.values.push.apply(that.values, arguments);\n    return that;\n  };\n}\nexports.list = List;\n\nfunction Symbol(name) {\n  this.name = name;\n\n  this.parse = function () { return Symbol_parse(name); };\n}\nvar Symbol_parse = function (symbol_name) {\n  var name = symbol_name,\n      ns = \"\",\n      root = \"\",\n      parts = [],\n      ns_parts = name.split(/\\//);\n\n  if (ns_parts.length > 1 && ns_parts[0] !== \"\") {\n    name = ns_parts.slice(1).join(\"/\");\n    if (name === \"\") {\n      name = symbol_name;\n    } else {\n      ns = ns_parts[0];\n    }\n  }\n\n  if (name.match(/^\\.+$/)) {\n    root = name;\n  } else {\n    var name_parts = name.split(/\\./);\n    root = name_parts[0];\n    parts = name_parts.slice(1);\n  }\n\n  return { namespace: ns, root: root, parts: parts };\n};\nexports.symbol = Symbol;\n\nfunction Keyword (name) {\n  this.name = name;\n}\nexports.keyword = Keyword;\n\nvar gensym_counter = 0;\nfunction gensym (root) {\n  return new Symbol(\"gensym$\" + root + \"$\" + (++gensym_counter));\n}\nexports.gensym = gensym;\n".replace(/exports[^\n]+\n/g, '');
-
-function BrowserLoader (root) {
-  this.root = root;
-};
-
-BrowserLoader.prototype.loadPath = function (path) {
-  var request = new XMLHttpRequest();
-  request.open('GET', this.root + "/" + path, false);
-  request.send(null);
-
-  if (request.status == 200) {
-    return request.responseText;
-  } else {
-    return null;
-  }
-}
-
-function NodeLoader (root) {
-  this.root = root;
-};
-
-NodeLoader.prototype.loadPath = function (path) {
-  try {
-    return fs.readFileSync(this.root + "/" + path);
-  } catch (exc) {
-    return undefined;
-  }
-}
-
-if (typeof window !== "undefined") {
-  var MODULE_LOADER = BrowserLoader;
-} else {
-  var MODULE_LOADER = NodeLoader;
-}
-
-function Environment (target, interactive) {
-
-  var id_counter = 0;
-
-  this.interactive = interactive;
-
-  this.genID = function (root) {
-    return root + "_$" + (++id_counter);
-  }
-
-  this.loader = new MODULE_LOADER("src");
-
-  this.readSession = (new reader.Reader(this.genID)).newReadSession();
-
-  this.target = target || "node";
-
-  this.scope = new Namespace.Scope();
-
-  this.scope.expose('List', core.list);
-  this.scope.expose('Symbol', core.symbol);
-  this.scope.expose('Keyword', core.keyword);
-  this.scope.expose('gensym', core.gensym);
-
-  this.namespaces = [];
-
-  this.loadNamespace('user', true);
-};
-
-Environment.prototype.runMethod = function (name, args) {
-  var fn = this.current_namespace.scope.resolve(parser.mungeSymbol(name));
-  if (!fn) {
-    throw "No such method " + this.current_namespace.name + "/" + name
-  }
-  return fn.value.apply(null, args);
-};
-
-Environment.prototype.loadNamespace = function (name, create) {
-  this.current_namespace = this.getNamespace(name, create);
-};
-
-Environment.prototype.findNamespace = function (name) {
-  for (var i = 0; i < this.namespaces.length; ++i) {
-    if (this.namespaces[i].name === name) {
-      return this.namespaces[i];
-    }
-  }
-  var loaded = this.loader.loadPath(name.replace(/\./g, '/') + ".terrible");
-  if (loaded) {
-    var prev_ns = this.current_namespace,
-        ns = this.createNamespace(name);
-
-    this.current_namespace = ns;
-    this.evalSession().eval(loaded);
-    this.current_namespace = prev_ns;
-
-    return ns;
-  }
-};
-
-Environment.prototype.createNamespace = function (name) {
-  var ns = new Namespace.Namespace(name, this.scope.newScope(true, false));
-  this.namespaces.push(ns);
-
-  if (name != "terrible.core") {
-    ns.scope.refer("terrible.core", null, this.findNamespace("terrible.core"));
-  };
-  return ns;
-};
-
-Environment.prototype.getNamespace = function (name, create) {
-  var ns = this.findNamespace(name);
-  if (ns) {
-    return ns;
-  } else if (create) {
-    return this.createNamespace(name);
-  } else {
-    throw "Couldn't getNamespace " + name;
-  }
-};
-
-Environment.prototype.evalSession = function () {
-  var session = {
-    readSession: (new reader.Reader(this.genID)).newReadSession()
-  };
-
-  var that = this;
-
-  return {
-    eval: function (text, error_cb) {
-      return that.evalText(session, text, error_cb);
-    }
-  }
-};
-
-Environment.prototype.evalText = function (session, text, error_cb) {
-  var that = this;
-
-  var results = [];
-
-  var forms = session.readSession.readString(text, function (err, form) {
-
-    if (err) {
-      var text = session.readSession.buffer.remaining().trim();
-      session.readSession.buffer.truncate();
-      results.push({ text: text, exception: err });
-      return;
-    }
-
-    try {
-      var processed = parser.process(form, that, false);
-      processed.form = form;
-      processed.text = form.$text;
-
-      var nodes = processed.ast;
-
-      results.push(processed);
-
-      that.current_namespace.ast_nodes =
-        that.current_namespace.ast_nodes.concat(nodes);
-    } catch (exception) {
-      if (error_cb) {
-        error_cb(form, form.$text, exception);
-      } else {
-        console.log(exception, exception.stack);
-        results.push({
-          form: form,
-          text: form.$text,
-          exception: exception
-        });
-      }
-    }
-
-  }, function (reader, name, buffer) {
-    var resolved = that.current_namespace.scope.resolve(parser.mungeSymbol('reader-'+name));
-    if (resolved && resolved.metadata['reader-macro']) {
-      try {
-        return resolved.value(reader, buffer);
-      } catch (exc) {
-        console.log(exc, exc.stack);
-      }
-    } else {
-      console.log("Couldn't resolve dispatcher for ", token)
-      throw "Couldn't resolve dispatcher for " + token
-    }
-  });
-
-  return results;
-};
-
-Environment.prototype.asJS = function (mode, entry_fn) {
-  var raw_core = Terr.Call(
-    Terr.Identifier('eval'),
-    [Terr.Literal(core_js)]
-  );
-  raw_core['x-verbatim'] = core_js;
-
-  var seq = Terr.Seq([raw_core]);
-
-  for (var i = 0; i < this.namespaces.length; ++i) {
-    seq.values.push(Terr.Seq(this.namespaces[i].ast_nodes));
-  }
-
-  if (mode === "library") {
-    var export_map = this.current_namespace.exportsMap();
-
-    if (this.target === "browser") {
-      seq.values.push(Terr.Return(Terr.Obj(export_map)));
-    } else {
-      for (var i = 0; i < export_map.length; ++i) {
-        var entry = export_map[i];
-        seq.values.push(Terr.Assign(
-          Terr.Member(Terr.Identifier("exports"), Terr.Literal(entry.key)),
-          entry.value
-        ));
-      }
-    }
-  } else {
-    if (entry_fn) {
-      var fn = this.current_namespace.scope.resolve(parser.mungeSymbol(entry_fn));
-      if (!fn) {
-        throw "Couldn't resolve entry point " + this.current_namespace.name + "/" + entry_fn;
-      }
-      seq.values.push(Terr.Call(fn.accessor, []));
-    }
-  }
-
-  if (this.target === "browser") {
-    var fn = Terr.Fn([Terr.SubFn([], seq, 0)], [0], null);
-    fn.$noReturn = true;
-    seq = Terr.Call(fn, []);
-  }
-
-  // TODO: better way of doing this, threading a context or such.
-  Terr.INTERACTIVE = this.interactive;
-  var js_ast = Terr.CompileToJS(seq, "statement");
-
-  if (false) { // source map experimenting
-    var result = codegen.generate(JS.Program(js_ast), {
-      sourceMap: "input",
-      sourceMapWithCode: true,
-      verbatim: 'x-verbatim'
-    });
-
-    console.log("map", result.map.toString());
-
-    return result.code;
-  } else {
-    return codegen.generate(JS.Program(js_ast), {
-      verbatim: 'x-verbatim'
-    });
-  }
-}
-
-exports.Environment = Environment;
-
-})()
-},{"./core":3,"./js":4,"./namespace":5,"./parser":19,"./reader":20,"./terr-ast":22,"escodegen":6,"fs":25}],2:[function(require,module,exports){
 exports.Identifier = function(name) {
   return {
     type: 'Identifier',
@@ -530,7 +268,7 @@ exports.This = function() {
   };
 };
 
-},{}],3:[function(require,module,exports){
+},{}],2:[function(require,module,exports){
 // Core Structures
 
 // Vector == Array
@@ -597,7 +335,269 @@ function gensym (root) {
 }
 exports.gensym = gensym;
 
-},{}],4:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
+(function(){var Namespace = require('./namespace');
+var Terr = require('./terr-ast');
+var codegen = require('escodegen');
+var JS = require('./js');
+var reader = require('./reader');
+var parser = require('./parser');
+var core = require('./core');
+var fs = require('fs');
+
+var core_js = "// Core Structures\n\n// Vector == Array\n// Map == Object\n// Literals == Number / String\n\nfunction List(values) {\n  var that = this;\n  this.values = values;\n\n  this.concat = function (arg) {\n    that.values = that.values.concat(arg);\n    return that;\n  };\n\n  this.push = function () {\n    that.values.push.apply(that.values, arguments);\n    return that;\n  };\n}\nexports.list = List;\n\nfunction Symbol(name) {\n  this.name = name;\n\n  this.parse = function () { return Symbol_parse(name); };\n}\nvar Symbol_parse = function (symbol_name) {\n  var name = symbol_name,\n      ns = \"\",\n      root = \"\",\n      parts = [],\n      ns_parts = name.split(/\\//);\n\n  if (ns_parts.length > 1 && ns_parts[0] !== \"\") {\n    name = ns_parts.slice(1).join(\"/\");\n    if (name === \"\") {\n      name = symbol_name;\n    } else {\n      ns = ns_parts[0];\n    }\n  }\n\n  if (name.match(/^\\.+$/)) {\n    root = name;\n  } else {\n    var name_parts = name.split(/\\./);\n    root = name_parts[0];\n    parts = name_parts.slice(1);\n  }\n\n  return { namespace: ns, root: root, parts: parts };\n};\nexports.symbol = Symbol;\n\nfunction Keyword (name) {\n  this.name = name;\n}\nexports.keyword = Keyword;\n\nvar gensym_counter = 0;\nfunction gensym (root) {\n  return new Symbol(\"gensym$\" + root + \"$\" + (++gensym_counter));\n}\nexports.gensym = gensym;\n".replace(/exports[^\n]+\n/g, '');
+
+function BrowserLoader (root) {
+  this.root = root;
+};
+
+BrowserLoader.prototype.loadPath = function (path) {
+  var request = new XMLHttpRequest();
+  request.open('GET', this.root + "/" + path, false);
+  request.send(null);
+
+  if (request.status == 200) {
+    return request.responseText;
+  } else {
+    return null;
+  }
+}
+
+function NodeLoader (root) {
+  this.root = root;
+};
+
+NodeLoader.prototype.loadPath = function (path) {
+  try {
+    return fs.readFileSync(this.root + "/" + path);
+  } catch (exc) {
+    return undefined;
+  }
+}
+
+if (typeof window !== "undefined") {
+  var MODULE_LOADER = BrowserLoader;
+} else {
+  var MODULE_LOADER = NodeLoader;
+}
+
+function Environment (target, interactive) {
+
+  var id_counter = 0;
+
+  this.interactive = interactive;
+
+  this.genID = function (root) {
+    return root + "_$" + (++id_counter);
+  }
+
+  this.loader = new MODULE_LOADER("src");
+
+  this.readSession = (new reader.Reader(this.genID)).newReadSession();
+
+  this.target = target || "node";
+
+  this.scope = new Namespace.Scope();
+
+  this.scope.expose('List', core.list);
+  this.scope.expose('Symbol', core.symbol);
+  this.scope.expose('Keyword', core.keyword);
+  this.scope.expose('gensym', core.gensym);
+
+  this.namespaces = [];
+
+  this.loadNamespace('user', true);
+};
+
+Environment.prototype.runMethod = function (name, args) {
+  var fn = this.current_namespace.scope.resolve(parser.mungeSymbol(name));
+  if (!fn) {
+    throw "No such method " + this.current_namespace.name + "/" + name
+  }
+  return fn.value.apply(null, args);
+};
+
+Environment.prototype.loadNamespace = function (name, create) {
+  this.current_namespace = this.getNamespace(name, create);
+};
+
+Environment.prototype.findNamespace = function (name) {
+  for (var i = 0; i < this.namespaces.length; ++i) {
+    if (this.namespaces[i].name === name) {
+      return this.namespaces[i];
+    }
+  }
+  var loaded = this.loader.loadPath(name.replace(/\./g, '/') + ".terrible");
+  if (loaded) {
+    var prev_ns = this.current_namespace,
+        ns = this.createNamespace(name);
+
+    this.current_namespace = ns;
+    this.evalSession().eval(loaded);
+    this.current_namespace = prev_ns;
+
+    return ns;
+  }
+};
+
+Environment.prototype.createNamespace = function (name) {
+  var ns = new Namespace.Namespace(name, this.scope.newScope(true, false));
+  this.namespaces.push(ns);
+
+  if (name != "terrible.core") {
+    ns.scope.refer("terrible.core", null, this.findNamespace("terrible.core"));
+  };
+  return ns;
+};
+
+Environment.prototype.getNamespace = function (name, create) {
+  var ns = this.findNamespace(name);
+  if (ns) {
+    return ns;
+  } else if (create) {
+    return this.createNamespace(name);
+  } else {
+    throw "Couldn't getNamespace " + name;
+  }
+};
+
+Environment.prototype.evalSession = function () {
+  var session = {
+    readSession: (new reader.Reader(this.genID)).newReadSession()
+  };
+
+  var that = this;
+
+  return {
+    eval: function (text, error_cb) {
+      return that.evalText(session, text, error_cb);
+    }
+  }
+};
+
+Environment.prototype.evalText = function (session, text, error_cb) {
+  var that = this;
+
+  var results = [];
+
+  var forms = session.readSession.readString(text, function (err, form) {
+
+    if (err) {
+      var text = session.readSession.buffer.remaining().trim();
+      session.readSession.buffer.truncate();
+      results.push({ text: text, exception: err });
+      return;
+    }
+
+    try {
+      var processed = parser.process(form, that, false);
+      processed.form = form;
+      processed.text = form.$text;
+
+      var nodes = processed.ast;
+
+      results.push(processed);
+
+      that.current_namespace.ast_nodes =
+        that.current_namespace.ast_nodes.concat(nodes);
+    } catch (exception) {
+      if (error_cb) {
+        error_cb(form, form.$text, exception);
+      } else {
+        console.log(exception, exception.stack);
+        results.push({
+          form: form,
+          text: form.$text,
+          exception: exception
+        });
+      }
+    }
+
+  }, function (reader, name, buffer) {
+    var resolved = that.current_namespace.scope.resolve(parser.mungeSymbol('reader-'+name));
+    if (resolved && resolved.metadata['reader-macro']) {
+      try {
+        return resolved.value(reader, buffer);
+      } catch (exc) {
+        console.log(exc, exc.stack);
+      }
+    } else {
+      console.log("Couldn't resolve dispatcher for ", token)
+      throw "Couldn't resolve dispatcher for " + token
+    }
+  });
+
+  return results;
+};
+
+Environment.prototype.asJS = function (mode, entry_fn) {
+  var raw_core = Terr.Call(
+    Terr.Identifier('eval'),
+    [Terr.Literal(core_js)]
+  );
+  raw_core['x-verbatim'] = core_js;
+
+  var seq = Terr.Seq([raw_core]);
+
+  for (var i = 0; i < this.namespaces.length; ++i) {
+    seq.values.push(Terr.Seq(this.namespaces[i].ast_nodes));
+  }
+
+  if (mode === "library") {
+    var export_map = this.current_namespace.exportsMap();
+
+    if (this.target === "browser") {
+      seq.values.push(Terr.Return(Terr.Obj(export_map)));
+    } else {
+      for (var i = 0; i < export_map.length; ++i) {
+        var entry = export_map[i];
+        seq.values.push(Terr.Assign(
+          Terr.Member(Terr.Identifier("exports"), Terr.Literal(entry.key)),
+          entry.value
+        ));
+      }
+    }
+  } else {
+    if (entry_fn) {
+      var fn = this.current_namespace.scope.resolve(parser.mungeSymbol(entry_fn));
+      if (!fn) {
+        throw "Couldn't resolve entry point " + this.current_namespace.name + "/" + entry_fn;
+      }
+      seq.values.push(Terr.Call(fn.accessor, []));
+    }
+  }
+
+  if (this.target === "browser") {
+    var fn = Terr.Fn([Terr.SubFn([], seq, 0)], [0], null);
+    fn.$noReturn = true;
+    seq = Terr.Call(fn, []);
+  }
+
+  // TODO: better way of doing this, threading a context or such.
+  Terr.INTERACTIVE = this.interactive;
+  var js_ast = Terr.CompileToJS(seq, "statement");
+
+  if (false) { // source map experimenting
+    var result = codegen.generate(JS.Program(js_ast), {
+      sourceMap: "input",
+      sourceMapWithCode: true,
+      verbatim: 'x-verbatim'
+    });
+
+    console.log("map", result.map.toString());
+
+    return result.code;
+  } else {
+    return codegen.generate(JS.Program(js_ast), {
+      verbatim: 'x-verbatim'
+    });
+  }
+}
+
+exports.Environment = Environment;
+
+})()
+},{"./core":2,"./js":4,"./namespace":5,"./parser":6,"./reader":7,"./terr-ast":8,"escodegen":10,"fs":25}],4:[function(require,module,exports){
 exports.Identifier = function(name) {
   return {
     type: 'Identifier',
@@ -1055,7 +1055,1785 @@ Namespace.prototype.requiresNamespace = function (ns) {
 exports.Namespace = Namespace;
 exports.Scope = Scope;
 
-},{"./js":4,"./terr-ast":22}],6:[function(require,module,exports){
+},{"./js":4,"./terr-ast":8}],6:[function(require,module,exports){
+(function(){var walker = require('./walker')
+var core = require('./core')
+var JS = require('./js')
+var codegen = require('escodegen')
+var Terr = require('./terr-ast')
+
+function isSymbol(s)  { return s instanceof core.symbol; }
+function isKeyword(s) { return s instanceof core.keyword; }
+function isList(s)    { return s instanceof core.list; }
+function slice (a, i) { return Array.prototype.slice.call(a, i); }
+
+function extend(left, right) {
+  left = left || {};
+  for (var k in right) {
+    if (right.hasOwnProperty(k)) {
+      left[k] = right[k];
+    }
+  }
+  return left;
+}
+
+var reserved_words = ['break', 'do', 'instanceof', 'typeof', 'case', 'else', 'new',
+                      'var', 'catch', 'finally', 'return', 'void', 'continue', 'for',
+                      'switch', 'while', 'debugger', 'function', 'with', 'default', 'if',
+                      'throw', 'delete', 'in', 'try', 'class', 'enum', 'extends', 'super',
+                      'const', 'export', 'import', 'implements', 'let', 'private', 'public',
+                      'yield', 'interface', 'package', 'protected', 'static'];
+
+function mungeSymbol (str) {
+  return str.replace(/-/g, '_')
+    .replace(/\:/g, "_COLON_") .replace(/\+/g, "_PLUS_")     .replace(/\>/g, "_GT_")
+    .replace(/\</g, "_LT_")    .replace(/\=/g, "_EQ_")       .replace(/\~/g, "_TILDE_")
+    .replace(/\!/g, "_BANG_")  .replace(/\@/g, "_CIRCA_")    .replace(/\#/g, "_HASH_")
+    .replace(/\\'/g, "_QUOTE_").replace(/\"/g, "_DQUOTE_")   .replace(/\%/g, "_PERCENT_")
+    .replace(/\^/g, "_CARET_") .replace(/\&/g, "_AMPERSAND_").replace(/\*/g, "_STAR_")
+    .replace(/\|/g, "_BAR_")   .replace(/\{/g, "_LBRACE_")   .replace(/\}/g, "_RBRACE_")
+    .replace(/\[/g, "_LBRACK_").replace(/\]/g, "_RBRACK_")   .replace(/\//g, "_SLASH_")
+    .replace(/\\/g, "_BSLASH_").replace(/\?/g, "_QMARK_")    .replace(/\./g, "_DOT_")
+    .replace(RegExp("^(" + reserved_words.join("|") + ")$"), function (match) {
+      return match + "_";
+    });
+}
+
+builtins = {
+  "var": function (opts) {
+    var env = opts.env,
+        walker = opts.walker(env),
+        ns = env.env.current_namespace.name,
+        munged_ns = mungeSymbol(ns.replace(/\./g, '$')) + "$",
+        decls = [],
+        inputs = slice(arguments, 1);
+
+    for (var i = 0; i < inputs.length; i += 2) {
+      var id = inputs[i],
+          val = inputs[i + 1];
+
+      if (!isSymbol(id)) { throw "Var binding must be a symbol."; }
+
+      var parsed_id = id.parse(),
+          munged_name = mungeSymbol(parsed_id.root),
+          metadata = extend({ private: true }, id.$metadata);
+
+      if (parsed_id.namespace) { throw "Cannot var bind into another namespace." }
+      if (parsed_id.parts.length > 0) { throw "Cannot var bind a multi-part id." }
+
+      if (metadata.external) { // expose an outside global var
+        env.scope.addSymbol(munged_name, {
+          type: 'any',
+          accessor: Terr.Identifier(munged_name),
+          metadata: metadata
+        });
+
+        // no val associated, so backtrack one index
+        i = i - 1;
+      } else if (env.scope.logicalScoped(munged_name)) { // Just assign into existing var
+        var resolved = env.scope.resolve(munged_name);
+        if (resolved.metadata.constant) { throw "Cannot reassign a constant " + munged_name }
+
+        val = walker(val);
+        env.scope.update(munged_name, {
+          node: val,
+          metadata: metadata
+        });
+
+        if (val && val.type == "Fn") {
+          val.id = Terr.Identifier(munged_name);
+        }
+
+        if (resolved.top_level) {
+          decls.push(Terr.NamespaceSet(ns, munged_name, resolved.js_name, val, "assign"));
+        } else {
+          decls.push(Terr.Assign(Terr.Identifier(resolved.js_name), val));
+        }
+      } else {
+        var js_name = env.scope.nameClash(munged_name) ? env.genID(munged_name)
+                                                       : munged_name;
+
+        // this will change if/when non top-level def is supported
+        if (env.scope.top_level && !metadata.private) {
+          js_name = munged_ns + js_name;
+        }
+
+        var accessor = env.scope.top_level ? Terr.NamespaceGet(ns, munged_name, js_name)
+                                           : Terr.Identifier(js_name);
+
+        env.scope.addSymbol(munged_name, {
+          type: 'any',
+          accessor: accessor,
+          js_name: js_name,
+          top_level: env.scope.top_level,
+          metadata: metadata
+        });
+
+        val = walker(val);
+        env.scope.update(munged_name, { node: val });
+
+        if (val && val.type == "Fn") {
+          val.id = Terr.Identifier(munged_name);
+        }
+
+        if (env.scope.top_level) {
+          decls.push(Terr.NamespaceSet(ns, munged_name, js_name, val, "var"));
+        } else {
+          decls.push(Terr.Var([[accessor, val]]));
+        }
+      }
+    }
+
+    return Terr.Seq(decls);
+  },
+
+  "lambda": function (opts, args) {
+    var walker = opts.walker,
+        env = opts.env;
+
+    var compile_fn = function (args, body) {
+      var formal_args = [],
+          rest_arg = null,
+          fn_env = env.newScope(true, true),
+          consume_rest_arg = false;
+
+      args.forEach(function (arg, i) {
+        if (!isSymbol(arg)) { throw "Invalid formal arg " + arg; }
+
+        var parsed_arg = arg.parse();
+
+        if (parsed_arg.parts.length > 0) { throw "Invalid formal arg " + JSON.stringify(arg); }
+
+        if (parsed_arg.root == "&") {
+          consume_rest_arg = true;
+        } else if (consume_rest_arg) {
+          if (i !== args.length - 1) { throw "Too many args following rest &"; }
+
+          rest_arg = arg;
+        } else {
+          var munged_name = mungeSymbol(parsed_arg.root),
+              node = Terr.Identifier(munged_name);
+
+          fn_env.scope.addSymbol(munged_name, {
+            type: 'any',
+            accessor: node
+          });
+
+          formal_args.push(node);
+        }
+      });
+
+      fn_env.scope.addSymbol('arguments', {
+        type: 'Arguments',
+        accessor: Terr.Identifier('arguments')
+      });
+      fn_env.scope.addSymbol('this', {
+        type: 'Object',
+        accessor: Terr.Identifier('this')
+      });
+
+      if (rest_arg) {
+        body.unshift(
+          new core.list([new core.symbol("var"), rest_arg,
+                         new core.list([new core.symbol("Array.prototype.slice.call"),
+                                        new core.symbol("arguments"),
+                                        formal_args.length]) ]));
+      }
+
+      var terr_body = Terr.Seq(body.map(walker(fn_env)));
+
+      return Terr.SubFn(formal_args, terr_body, formal_args.length, rest_arg != null);
+    }; // end compile_fn
+
+    var forms =
+          isList(args) ? slice(arguments, 1).map(function (list) { return list.values; })
+                       : [[args].concat(slice(arguments, 2))],
+        arity_map = {},
+        arities = [],
+        variadic = null;
+
+    forms.forEach(function (form, i) {
+      var compiled = compile_fn(form[0], form.slice(1));
+
+      if (compiled.variadic) {
+        if (i !== forms.length - 1) {
+          throw "Variadic form must be in last position."
+        }
+        variadic = compiled.arity;
+        arity_map._ = compiled;
+        arities.push("_");
+      } else if (arity_map[compiled.arity]) {
+        throw "Cannot define same arity twice."
+      } else if (compiled.arity < arities[arities.length - 1]) {
+        throw "Multi-arity functions should be declared in ascending number of arguments."
+      } else {
+        arity_map[compiled.arity] = compiled;
+        arities.push(compiled.arity);
+      }
+    });
+
+    return Terr.Fn(arity_map, arities, variadic);
+  },
+
+  "ns": function (opts, ns) {
+    opts.env.env.current_namespace = opts.env.env.getNamespace(ns.name, true);
+
+    return Terr.Seq([]);
+  },
+
+  "set!": function (opts) {
+    var walker = opts.walker,
+        env = opts.env;
+
+    var settings = slice(arguments, 1);
+
+    if (settings.length % 2) {
+      throw "set! takes an even number of arguments"
+    }
+
+    walker = walker(env);
+
+    var seq = [];
+
+    for (var i = 0, len = settings.length; i < len; i += 2) {
+      var o_left = settings[i],
+          left = walker(o_left),
+          right = walker(settings[i + 1]);
+
+      if (isSymbol(o_left)) {
+        var left_parsed = o_left.parse();
+        if (left_parsed.parts.length === 0) {
+          var resolved = env.resolveSymbol(left_parsed);
+          if (resolved.metadata.constant) { throw "Cannot reassign constant " + o_left.name }
+        }
+      }
+
+      if (left.type == "NamespaceGet") {
+        left.type = "NamespaceSet";
+        left.value = right;
+        left.declaration = "assign";
+
+        seq.push(left);
+      } else {
+        seq.push(Terr.Assign(left, right));
+      }
+    }
+
+    if (seq.length == 1) {
+      return seq[0];
+    } else {
+      return Terr.Seq(seq);
+    }
+  },
+
+  "unquote-splicing": function (opts, arg) {
+    if (opts.env.quoted != "syntax") {
+      throw "Cannot call unquote-splicing outside of syntax-quote."
+    }
+    var result = opts.walker(opts.env.setQuoted(false))(arg);
+
+    return Terr.Splice(result);
+  }
+}
+
+function compile_eval (node, env) {
+  var ENV = {
+    get: function (namespace, name) {
+      if (namespace === null) {
+        return env.scope.resolve(name).value;
+      }
+      return env.findNamespace(namespace).scope.resolve(name).value;
+    },
+    set: function (namespace, name, value) {
+      if (namespace === null) {
+        env.scope.update(name, { value: value });
+      } else {
+        env.findNamespace(namespace).scope.update(name, { value: value });
+      }
+      return value;
+    }
+  };
+
+  // TODO: better way od doing this
+  Terr.INTERACTIVE = true;
+  var compile_nodes = Terr.CompileToJS(node, "return");
+
+  var js = codegen.generate(JS.Program(compile_nodes));
+  try {
+    return new Function('$ENV', js)(ENV);
+  } catch (exc) {
+    console.log(exc, js);
+    throw exc;
+  }
+}
+
+function loc (node, form) {
+  if (node.loc) { form.loc = node.loc; }
+  return form;
+}
+
+walk_handlers = {
+  "List": function (node, walker, env) {
+
+    // easier bound version
+    var _loc = function (form) {
+      return loc(node, form);
+    }
+
+    var head = node.values[0],
+        tail = node.values.slice(1),
+        o_walker = walker,
+        walker = walker(env);
+
+    // Quoting
+    if (env.quoted && (!isSymbol(head) || (head.name !== 'unquote' &&
+                                           head.name !== "unquote-splicing"))) {
+      var values = node.values.map(walker),
+          list_symb = o_walker(env.setQuoted(false))(
+            new core.list([new core.symbol('terrible.core/list')])
+          );
+
+      if (env.quoted == "syntax") {
+        return _loc(values.reduce(function (left, right) {
+          if (right.type == "Splice") {
+            left = Terr.Call(Terr.Member(left, Terr.Literal("concat")), [right.value]);
+            left.$concat = true;
+          } else {
+            if (left.$concat) {
+              left = Terr.Call(Terr.Member(left, Terr.Literal("push")), [right]);
+            } else {
+              left.args.push(right);
+            }
+          }
+          return left;
+        }, list_symb));
+      } else {
+        list_symb.args = values;
+        return _loc(list_symb);
+      }
+    }
+
+    // Symbol dispatch
+    if (head && isSymbol(head)) {
+
+      var parsed_head = head.parse(),
+          name = parsed_head.root;
+
+      // (.concat [1 2 3] [4 5 6])
+      if (parsed_head.root == "") {
+        var target = parsed_head.parts.reduce(function (left, right) {
+          return Terr.Member(left, Terr.Literal(right));
+        }, walker(tail[0]));
+
+        return _loc(Terr.Call(target, tail.slice(1).map(walker)));
+      }
+
+      // (a.b 1 2 3)
+      if (parsed_head.parts.length > 0) {
+        return _loc(Terr.Call(walker(head), tail.map(walker)));
+      }
+
+      // (var a 5)
+      if (builtins[name]) {
+        return _loc(builtins[name].apply(null, [{
+          walker: o_walker,
+          env: env
+        }].concat(tail)));
+      }
+
+      var resolved = env.resolveSymbol(parsed_head);
+      if (resolved === false) { throw "Couldn't resolve " + name; }
+
+      // terr-macros and macros
+      if (resolved.metadata['terr-macro']) {
+        return _loc(resolved.value.apply(null, [{
+          walker: o_walker,
+          env: env,
+          Terr: Terr,
+          extend: extend,
+          builtins: builtins,
+          mungeSymbol: mungeSymbol
+        }].concat(tail)));
+      } else if (resolved.metadata['macro']) {
+        return _loc(walker(resolved.value.apply(null, tail)));
+      }
+
+      // Check arities match and specialise for multi-arity functions.
+      if (resolved.node && resolved.node.type == "Fn") {
+        var fn_node = resolved.node,
+            target = walker(head);
+
+        if (~fn_node.arities.indexOf(tail.length)) {
+          // Don't specialise the call if interactive, as it could change underneath us.
+          if (!env.env.interactive && fn_node.arities.length > 1) {
+            target = Terr.Member(target, Terr.Literal("$" + tail.length));
+          }
+        } else if (fn_node.variadic != null && tail.length >= fn_node.variadic) {
+          if (!env.env.interactive && fn_node.arities.length > 1) {
+            target = Terr.Member(target, Terr.Literal("$_"));
+          }
+        } else {
+          throw "Function `" + name + "` expects " + fn_node.arities +
+                " arguments, " + tail.length + " provided."
+        }
+      } else if (resolved.type != "any") {
+        throw "Cannot call " + resolved.type + " `" + name + "` as function."
+      }
+
+      return _loc(Terr.Call(loc(head, target || walker(head)),
+                            tail.map(walker)));
+    } else if (head && isList(head)) {
+      return _loc(Terr.Call(walker(head), tail.map(walker)));
+    } else {
+      throw "Cannot call `" + JSON.stringify(head) + "` as function."
+    }
+  },
+
+  "Symbol": function (node, walker, env) {
+
+    if (env.quoted == "quote" || (env.quoted == "syntax" && builtins[node.name])) {
+      walker = walker(env.setQuoted(false));
+      return loc(node, Terr.Call(
+        walker(new core.symbol('terrible.core/symbol')),
+        [Terr.Literal(node.name)]
+      ));
+    } else if (env.quoted == "syntax") {
+      var parsed_node = node.parse();
+      var resolved = env.resolveSymbol(parsed_node);
+
+      walker = walker(env.setQuoted(false));
+
+      if (!resolved) {
+        if (parsed_node.root.match(/#$/)) {
+          // TODO: insert safely
+          return loc(node, Terr.Call(
+            walker(new core.symbol('terrible.core/symbol')),
+            [Terr.Literal(node.name)]
+          ));
+        } else {
+          throw "Couldn't resolve `" + node.name + "`";
+        }
+      }
+
+      var ns = parsed_node.namespace || env.env.current_namespace.name;
+
+      return loc(node, Terr.Call(
+        walker(new core.symbol('terrible.core/symbol')),
+        [Terr.Literal(ns + "/" + [parsed_node.root].concat(parsed_node.parts).join("."))]
+      ));
+    }
+
+    var parsed_node = node.parse();
+    var resolved = env.resolveSymbol(parsed_node);
+
+    if (!resolved) {
+      console.trace();
+      console.log("Couldn't resolve", node.name);
+      throw "Couldn't resolve `" + node.name + "`";
+    }
+
+    if (resolved.metadata.constant) { return resolved.node; }
+
+    if (resolved.top_level) {
+      var root = Terr.NamespaceGet(
+        parsed_node.namespace || env.env.current_namespace.name,
+        mungeSymbol(parsed_node.root),
+        resolved.accessor.js_name
+      );
+    } else {
+      var root = resolved.accessor;
+    }
+
+    var walker = walker(env);
+
+    for (var i = 0, len = parsed_node.parts.length; i < len; ++i) {
+      root = Terr.Member(root, walker(parsed_node.parts[i]));
+    }
+
+    return loc(node, root);
+  }
+}
+
+walk_handler = function (node, walker, env) {
+  if (isList(node)) {
+    return walk_handlers.List(node, walker, env);
+  } if (isKeyword(node)) {
+    return walker(env)(new core.list([new core.symbol("terrible.core/keyword"), node.name]));
+  } else if (isSymbol(node)) {
+    return walk_handlers.Symbol(node, walker, env);
+  } else if (Array.isArray(node)) {
+    return Terr.Arr(node.map(walker(env)));
+  } else if (node === null) {
+    return Terr.Literal(null);
+  } else if (node instanceof RegExp) {
+    return Terr.Literal(node);
+  } else if (typeof node == 'object') {
+    var props = [];
+    walker = walker(env);
+
+    for (var k in node) {
+      props.push({key: k, value: walker(node[k])});
+    }
+
+    return Terr.Obj(props);
+  } else {
+    return Terr.Literal(node);
+  }
+};
+
+function WalkingEnv(env, scope, quoted) {
+  this.env = env;
+  this.scope = scope;
+  this.quoted = quoted;
+}
+
+WalkingEnv.prototype.genID = function (root) {
+  return this.env.genID(root);
+};
+
+WalkingEnv.prototype.newScope = function (logical, js) {
+  return new WalkingEnv(this.env, this.scope.newScope(logical, js), this.quoted);
+};
+
+WalkingEnv.prototype.setQuoted = function (quoted) {
+  return new WalkingEnv(this.env, this.scope.newScope(false, false), quoted);
+};
+
+WalkingEnv.prototype.resolveSymbol = function (parsed_symbol) {
+  if (parsed_symbol.namespace) {
+    var ns = this.scope.resolveNamespace(parsed_symbol.namespace) ||
+             this.env.findNamespace(parsed_symbol.namespace);
+
+    if (!ns) {
+      throw "Couldn't find namespace `" + parsed_symbol.namespace + "`"
+    }
+
+    parsed_symbol.namespace = ns.name;
+
+    this.env.current_namespace.requiresNamespace(ns);
+    var scope = ns.scope;
+  } else {
+    var scope = this.scope;
+  }
+
+  return scope.resolve(mungeSymbol(parsed_symbol.root));
+};
+
+exports.process = function (form, env, quoted) {
+  var walking_env = new WalkingEnv(env, env.current_namespace.scope, quoted),
+      ast = walker(walk_handler, form, walking_env),
+      value = compile_eval(ast, env);
+
+  return { ast: ast, value: value };
+};
+exports.mungeSymbol = mungeSymbol;
+
+})()
+},{"./core":2,"./js":4,"./terr-ast":8,"./walker":9,"escodegen":10}],7:[function(require,module,exports){
+(function(){// A partial port and modification of the Clojure reader
+// https://github.com/clojure/clojure/blob/master/src/jvm/clojure/lang/LispReader.java
+
+var core = require('./core')
+
+// Buffer
+
+function EOFError () {}
+
+function Buffer (string) {
+  this.string = string;
+  this.pos = 0;
+  this.line = 0;
+  this.col = 0;
+}
+
+Buffer.prototype.read1 = function () {
+  if (this.pos === this.string.length) {
+    ++this.pos;
+    ++this.col;
+    return " ";
+  } else if (this.pos > this.string.length) {
+    throw new EOFError();
+  } else {
+    var ch = this.string[this.pos];
+    ++this.pos;
+    if (ch == "\n") {
+      ++this.line;
+      this.col = 0;
+    } else {
+      ++this.col;
+    }
+    return ch;
+  }
+}
+
+Buffer.prototype.getPos = function () {
+  return { line: this.line, column: this.col }
+}
+
+Buffer.prototype.save = function () {
+  return {
+    line: this.line,
+    col: this.col,
+    pos: this.pos
+  }
+}
+
+Buffer.prototype.restore = function (d) {
+  this.line = d.line;
+  this.col = d.col;
+  this.pos = d.pos;
+}
+
+Buffer.prototype.lookahead = function (n) {
+  return this.string.substring(this.pos, this.pos + n);
+}
+
+Buffer.prototype.unread = function (str) {
+  this.pos -= str.length;
+}
+
+Buffer.prototype.append = function (str) {
+  this.string += str;
+}
+
+Buffer.prototype.truncate = function () {
+  this.string = this.string.substring(0, this.pos);
+}
+
+Buffer.prototype.remaining = function () {
+  return this.string.substring(this.pos);
+}
+
+Buffer.prototype.locationFromState = function (start_state) {
+  return {
+    start: {
+      line: start_state.line,
+      column: start_state.col
+    },
+    end: {
+      line: this.line,
+      column: this.col
+    }
+  }
+}
+
+// Reader
+
+var symbolPattern = /^([:][^\d\s]|[^:\d\s])[^\n\t\r\s,]*$/
+
+// Reader macros
+
+function unmatchedDelimiter(c) {
+  return function () {
+    throw "UnmatchedDelimiter `" + c + "`";
+  }
+}
+
+function listReader (buffer, openparen) {
+  return new core.list(this.readDelimitedList(')', buffer));
+}
+
+function vectorReader (buffer, openparen) {
+  return this.readDelimitedList(']', buffer);
+}
+
+function hashReader (buffer, openparen) {
+  var hash = this.readDelimitedList('}', buffer);
+  if (hash.length % 2) {
+    throw "Hash must contain even number of forms";
+  }
+  var obj = {}
+  for (var i = 0, len = hash.length; i < len; i += 2) {
+    var left = hash[i];
+    var right = hash[i+1];
+    if (left instanceof core.keyword) {
+      obj[left.name] = right;
+    } else {
+      obj[left] = right;
+    }
+  }
+  return obj;
+}
+
+function commentReader (buffer) {
+  while (!buffer.read1().match(/[\n\r]/));
+  return buffer;
+}
+
+function quoteReader (buffer, apostrophe) {
+  return new core.list([new core.symbol('quote'), this.read(buffer)]);
+}
+
+function syntaxQuoteReader (buffer, tick) {
+  return new core.list([new core.symbol('syntax-quote'), this.read(buffer)]);
+}
+
+function unquoteReader (buffer, apostrophe) {
+  if (buffer.lookahead(1) == "@") {
+    buffer.read1();
+    return new core.list([new core.symbol('unquote-splicing'), this.read(buffer)]);
+  } else {
+    return new core.list([new core.symbol('unquote'), this.read(buffer)]);
+  }
+}
+
+function splatReader (buffer, tilde) {
+  return new core.list([new core.symbol('splat'), this.read(buffer)]);
+}
+
+function metadataReader (buffer, caret) {
+  var ch = buffer.lookahead(1);
+  if (this.isWhitespace(ch)) {
+    return this.read(buffer);
+  } else {
+    var metaform = this.read(buffer);
+    if (metaform instanceof core.keyword) {
+      var kw = metaform;
+      metaform = {};
+      metaform[kw.name] = true;
+    }
+    var form = this.read(buffer);
+    if (form instanceof core.symbol) {
+      form.$metadata = metaform;
+      return form;
+    } else {
+      throw "Can only attach metadata to symbols";
+    }
+  }
+}
+
+function stringReader (buffer, quote) {
+  var str = "", docquote = false, ch;
+
+  if (buffer.lookahead(2) == '""') {
+    var docquote = true;
+    buffer.read1();
+    buffer.read1();
+  }
+
+  while (ch = buffer.read1()) {
+    if (ch == '"') {
+      if (docquote) {
+        if (buffer.lookahead(2) == '""') {
+          buffer.read1();
+          buffer.read1();
+          break;
+        } else {
+          str += ch;
+          continue;
+        }
+      } else {
+        break;
+      }
+    }
+
+    if (ch == "\\") {
+      ch = buffer.read1();
+
+      if (ch == "t") { ch = "\t"; }
+      else if (ch == "r") { ch = "\r"; }
+      else if (ch == "n") { ch = "\n"; }
+      else if (ch == "b") { ch = "\b"; }
+      else if (ch == "f") { ch = "\f"; }
+      else if (ch == "\\" || ch == '"') { }
+      else { throw "Unsupported escape \\" + ch + JSON.stringify(buffer.getPos()) }
+    }
+
+    str += ch;
+  }
+
+  return str;
+}
+
+dispatchReader = function (buffer, hash) {
+  var ch = buffer.read1();
+  if (this.dispatch_macros[ch]) {
+    return this.dispatch_macros[ch].call(this, buffer, ch);
+  } else {
+    if (buffer.dispatch_handler) {
+      return buffer.dispatch_handler(this, ch, buffer);
+    } else {
+      throw "dispatch on symbol but no Buffer dispatch_handler"
+    }
+  }
+}
+
+function findArg (reader, n) {
+  for (var i = 0, len = reader.ARG_ENV.length; i < len; ++i) {
+    var arg = reader.ARG_ENV[i];
+    if (n === arg.n) return arg;
+  }
+}
+
+gen_arg = function (reader, n) {
+  var root = (n === -1) ? "rest" : "arg$" + n;
+  return new core.symbol(reader.genID(root));
+}
+
+function registerArg (reader, n) {
+  if (!reader.ARG_ENV) {
+    throw "arg lit not in #()"
+  }
+
+  var arg = findArg(reader, n);
+  if (arg == null) {
+    var symbol = gen_arg(reader, n);
+    reader.ARG_ENV.push({n: n, symbol: symbol});
+    return symbol;
+  } else {
+    return arg.symbol;
+  }
+}
+
+argReader = function (buffer, percent) {
+  if (!this.ARG_ENV) {
+    return this.readToken(buffer, percent);
+  }
+
+  var ch = buffer.lookahead(1);
+
+  if (this.isWhitespace(ch) || this.isTerminatingMacro(ch)) {
+    return registerArg(this, 1);
+  } else if (ch == ".") {
+    var root = registerArg(this, 1);
+    var symb = this.read(buffer);
+
+    return new core.symbol(root.name + symb.name);
+  } else if (this.isDigit(ch)) {
+
+    var n = buffer.read1();
+    var buffer_state = buffer.save();
+    ch = buffer.read1();
+
+    while (this.isDigit(ch)) {
+      n += ch;
+      buffer_state = buffer.save();
+      ch = buffer.read1();
+    }
+
+    buffer.restore(buffer_state);
+
+    var n = parseFloat(n);
+
+    var root = registerArg(this, n);
+
+    if (buffer.lookahead(1) == ".") {
+      var symb = this.read(buffer);
+      return new core.symbol(root.name + symb.name);
+    } else {
+      return root;
+    }
+  }
+
+  var n = this.read(buffer);
+
+  if (n instanceof core.symbol && n.name == '&') {
+    return this.registerArg(-1);
+  }
+
+  if (typeof n != 'number') {
+    throw 'arg literal must be %, %& or %n ' + JSON.stringify(buffer.getPos())
+  }
+
+  return this.registerArg(n);
+}
+
+fnReader = function (buffer, openparen) {
+  buffer.unread(openparen);
+
+  var originalENV = this.ARG_ENV;
+
+  this.ARG_ENV = [];
+
+  var form = this.read(buffer);
+
+  if (originalENV && this.ARG_ENV.length != 0) {
+    throw "Cannot nest lambdas with arguments. " + JSON.stringify(buffer.getPos())
+  }
+
+  if (this.ARG_ENV.length > 0) {
+    this.ARG_ENV.sort(function (a, b) {
+      if (a.n == -1) return 1;
+      if (b.n == -1) return -1;
+      return a.n > b.n;
+    });
+
+    if (this.ARG_ENV[this.ARG_ENV.length - 1].n === -1) {
+      var rest_arg = this.ARG_ENV.pop().symbol;
+    } else {
+      var rest_arg = null;
+    }
+
+    var args = [];
+    for (var i = 0, len = this.ARG_ENV.length; i < len; ++i) {
+      args[this.ARG_ENV[i].n - 1] = this.ARG_ENV[i].symbol;
+    }
+
+    for (var i = 0, len = args.length; i < len; ++i) {
+      if (!args[i]) {
+        args[i] = gen_arg(this, i + 1);
+      }
+    }
+
+    if (rest_arg) {
+      args.push(new core.symbol('&'));
+      args.push(rest_arg);
+    }
+  } else {
+    var args = [];
+  }
+
+  this.ARG_ENV = originalENV;
+
+  if (form.values[0] && !(form.values[0] instanceof core.symbol)) {
+    return new core.list([new core.symbol('lambda'), args].concat(form.values));
+  } else {
+    return new core.list([new core.symbol('lambda'), args, form]);
+  }
+}
+
+function Reader (id_generator) {
+  this.genID = id_generator;
+}
+
+Reader.prototype.macros = {
+  "[": vectorReader,
+  "{": hashReader,
+  "(": listReader,
+  "]": unmatchedDelimiter("]"),
+  "}": unmatchedDelimiter("}"),
+  ")": unmatchedDelimiter(")"),
+  ";": commentReader,
+  "`": syntaxQuoteReader,
+  "'": quoteReader,
+  "~": unquoteReader,
+  "@": splatReader,
+  '"': stringReader,
+  '%': argReader,
+  '#': dispatchReader,
+  '^': metadataReader
+}
+
+Reader.prototype.dispatch_macros = {
+  '(': fnReader
+}
+
+Reader.prototype.isWhitespace = function (str) { return str.match(/[\t\r\n,\s]/); }
+Reader.prototype.isDigit = function (str) { return /^[0-9]$/.exec(str); }
+Reader.prototype.isNumber = function (n) { return !isNaN(parseFloat(n)) && isFinite(n); }
+Reader.prototype.isTerminatingMacro = function (ch) {
+  return this.macros[ch] && ch != '#' && ch != '\'' && ch != '%'
+}
+
+function annotateLocation (form, buffer, start_state) {
+  if (form !== null && typeof form === "object") {
+    form.loc = buffer.locationFromState(start_state);
+  }
+  return form;
+}
+
+Reader.prototype.read = function (buffer) {
+  while (true) {
+    var ch, macro;
+
+    var start_state = buffer.save();
+    var ch = buffer.read1();
+
+    while (this.isWhitespace(ch)) {
+      start_state = buffer.save();
+      ch = buffer.read1();
+    }
+
+    if (this.isDigit(ch)) {
+      return this.readNumber(buffer, ch);
+    }
+
+    if (macro = this.macros[ch]) {
+      var ret = macro.call(this, buffer, ch);
+      if (ret == buffer) {
+        continue;
+      } else {
+        return annotateLocation(ret, buffer, start_state);
+      }
+    }
+
+    if (ch == '+' || ch == '-') {
+      var buffer_state = buffer.save();
+      var ch2 = buffer.read1();
+      if (this.isDigit(ch2)) {
+        var n = this.readNumber(buffer, ch2);
+        return annotateLocation(new core.list([new core.symbol(ch), n]), buffer, start_state);
+      } else {
+        buffer.restore(buffer_state);
+      }
+    }
+
+    return annotateLocation(this.readToken(buffer, ch), buffer, start_state);
+  }
+}
+
+Reader.prototype.readNumber = function (buffer, s) {
+  while (true) {
+    var buffer_state = buffer.save();
+    var ch = buffer.read1();
+    if (this.isWhitespace(ch) || this.macros[ch]) {
+      buffer.restore(buffer_state);
+      break;
+    }
+    s += ch;
+  }
+
+  if (!this.isNumber(s)) {
+    throw "Invalid number: " + s + " " + JSON.stringify(buffer.getPos())
+  }
+
+  return parseFloat(s);
+}
+
+Reader.prototype.reifySymbol = function (s) {
+  if (s == 'nil' || s == 'null') return null;
+  if (s == 'true') return true;
+  if (s == 'false') return false;
+  if (s == 'undefined') return new core.symbol('undefined');
+  if (symbolPattern.exec(s)) return new core.symbol(s);
+
+  throw "Invalid token: #{s}";
+}
+
+Reader.prototype.readToken = function (buffer, s) {
+  if (s == ":") { // keyword
+    var kw = "";
+    while (true) {
+      var buffer_state = buffer.save();
+      var ch = buffer.read1();
+      if (this.isWhitespace(ch) || this.isTerminatingMacro(ch)) {
+        buffer.restore(buffer_state);
+        if (kw === "") {
+          return new core.symbol(s);
+        } else {
+          return new core.keyword(kw);
+        }
+      }
+      kw += ch;
+    }
+  } else { // symbol
+    while (true) {
+      var buffer_state = buffer.save();
+      var ch = buffer.read1();
+      if (this.isWhitespace(ch) || this.isTerminatingMacro(ch)) {
+        buffer.restore(buffer_state);
+        return this.reifySymbol(s);
+      }
+      s += ch;
+    }
+  }
+}
+
+Reader.prototype.readDelimitedList = function (endchar, buffer) {
+  var forms = [], ch, macro, ret, buffer_state;
+  while (true) {
+    buffer_state = buffer.save();
+    ch = buffer.read1();
+    while (this.isWhitespace(ch)) {
+      buffer_state = buffer.save();
+      ch = buffer.read1();
+    }
+
+    if (ch === endchar) break;
+
+    if (macro = this.macros[ch]) {
+      ret = macro.call(this, buffer, ch);
+    } else {
+      buffer.restore(buffer_state);
+      ret = this.read(buffer);
+    }
+    if (ret != buffer) {
+      forms.push(ret);
+    }
+  }
+
+  return forms;
+}
+
+Reader.prototype.readString = function (str) {
+  return this.newReadSession().readString(str);
+}
+
+Reader.prototype.newReadSession = function () {
+  var buffer = new Buffer(""),
+      reader = this;
+
+  return {
+    buffer: buffer,
+    readString: function (str, form_handler, dispatch_handler) {
+      buffer.append(str);
+      buffer.dispatch_handler = dispatch_handler;
+      var forms = [], buffer_state;
+      try {
+        buffer_state = buffer.save();
+        while (form = reader.read(buffer)) {
+
+          form.$text = buffer.string.substring(buffer_state.pos, buffer.pos);
+
+          form_handler(null, form);
+
+          buffer_state = buffer.save();
+        }
+      } catch (exception) {
+        if (exception instanceof EOFError) {
+          buffer.restore(buffer_state);
+          return;
+        } else {
+          form_handler(exception);
+          return;
+        }
+      }
+    }
+  }
+}
+
+// Debug and testing
+
+print_str = function (node) {
+  if (node === null) {
+    return "null";
+  } if (node.$isList) {
+    return "(" + node.values.map(print_str).join(" ") + ")";
+  } else if (node.type == "Symbol") {
+
+    var root = node.parts[0];
+
+    for (var i = 1, len = node.parts.length; i < len; ++i) {
+      root += "[" + print_str(node.parts[i]) + "]"
+    }
+
+    return root;
+  } else if (node.type == "Keyword") {
+    return ":" + node.toString();
+  } else if (Array.isArray(node)) {
+    return "[" + node.map(print_str).join(" ") + "]";
+  } else if (typeof node == "object") {
+    return "{" + Object.keys(node).map(function (k) {
+      return print_str(k) + ' ' + print_str(node[k])
+    }).join(" ") + "}"
+  } else {
+    return JSON.stringify(node);
+  }
+}
+
+try_parse = function (str) {
+  result = reader.readString(str);
+  console.log(require('util').inspect(result, false, 10));
+  console.log(result.map(print_str).join("\n"))
+}
+
+// var reader = new Reader()
+// try_parse("(a.b[(+ 1 2)][:a] [1 2 3] {:a 5 :b 6})");
+// try_parse('(a """my fun " string""")')
+
+exports.Reader = Reader
+exports.printString = print_str;
+
+})()
+},{"./core":2,"util":27}],8:[function(require,module,exports){
+var JS = require('./JS');
+
+var Terr = exports;
+
+Terr.INTERACTIVE = false;
+
+function intoBlock (node, mode) {
+  if (node !== undefined) {
+    var r = Terr.CompileToJS(node, mode);
+    if (r.length == 1) {
+      return r[0];
+    } else {
+      return JS.Block(r);
+    }
+  } else {
+    if (mode == "return") {
+      return JS.Return();
+    } else {
+      return undefined;
+    }
+  }
+}
+
+var compilers = {
+  Fn: {
+    fields: ['bodies', 'arities', 'variadic'],
+    compile: function (node, mode) {
+      var bodies = node.arities.map(function (k) {
+        if (node.$noReturn) {
+          node.bodies[k].$noReturn = true;
+        }
+        return Terr.CompileToJS(node.bodies[k], "expression");
+      });
+
+      if (node.id) {
+        var fndef = Terr.CompileToJS(node.id, "expression");
+      } else {
+        var fndef = JS.Identifier("$fndef");
+      }
+
+      if (node.arities.length == 1) {
+        var fn = bodies[0];
+
+        if (node.id) {
+          fn.id = fndef;
+        }
+
+        if (mode == "statement") {
+          if (fn.id) {
+            fn.type = "FunctionDeclaration";
+            return fn;
+          } else {
+            return [JS.ExpressionStatement(fn)];
+          }
+        } else if (mode == "return") {
+          return [JS.Return(fn)];
+        } else if (mode == "expression") {
+          return fn;
+        }
+      } else {
+
+        if (node.variadic !== null) {
+          var max_arity = Math.max.apply(Math, node.arities.slice(0, node.arities.length - 1).concat([node.variadic]));
+        } else {
+          var max_arity = Math.max.apply(Math, node.arities);
+        }
+
+        var dispatch_args = [];
+        for (var i = 0; i < max_arity; ++i) {
+          dispatch_args.push(JS.Identifier("$" + i));
+        }
+
+        var args_len = JS.Identifier('$args_len');
+
+        var dispatch_body = [JS.VariableDeclaration([
+          JS.VariableDeclarator(
+            args_len,
+            JS.MemberExpressionComputed(JS.Identifier("arguments"), JS.Literal("length"))
+          )
+        ])];
+
+        var closure_body = [];
+
+        node.arities.forEach(function (arity, i) {
+
+          var app_name = JS.Literal("$" + arity);
+
+          if (arity == "_") {
+            dispatch_body.push(
+              JS.IfStatement(
+                JS.BinaryExpression(args_len, ">=", JS.Literal(node.variadic)),
+                JS.Return(JS.CallExpression(
+                  JS.MemberExpressionComputed(
+                    JS.MemberExpressionComputed(fndef, app_name),
+                    JS.Literal("apply")
+                  ),
+                  [JS.Identifier("this"), JS.Identifier("arguments")]
+                ))
+              )
+            )
+          } else {
+            dispatch_body.push(
+              JS.IfStatement(
+                JS.BinaryExpression(args_len, "==", JS.Literal(arity)),
+                JS.Return(JS.CallExpression(
+                  JS.MemberExpressionComputed(
+                    JS.MemberExpressionComputed(fndef, app_name),
+                    JS.Literal("call")
+                  ),
+                  [JS.Identifier("this")].concat(dispatch_args.slice(0, arity))
+                ))
+              )
+            )
+          }
+
+          closure_body.push(
+            JS.ExpressionStatement(JS.AssignmentExpression(
+              JS.MemberExpressionComputed(fndef, app_name),
+              "=",
+              bodies[i]
+            ))
+          );
+        });
+
+        dispatch_body.push(JS.ThrowStatement(JS.Literal("No matching arity.")));
+
+        var dispatch_fn = JS.FunctionDeclaration(fndef, dispatch_args, dispatch_body);
+
+        closure_body.unshift(dispatch_fn);
+
+        if (mode == "return") {
+          closure_body.push(JS.Return(fndef));
+          return closure_body;
+        } else if (mode == "statement") {
+          return closure_body;
+        } else {
+          closure_body.push(JS.Return(fndef));
+          return IIFE(closure_body);
+        }
+      }
+    }
+  },
+
+  SubFn: {
+    fields: ['args', 'body', 'arity', 'variadic'],
+    compile: function (node, mode) {
+      return JS.FunctionExpression(
+        node.args.map(function (n) { return Terr.CompileToJS(n, "expression"); }),
+        Terr.CompileToJS(node.body, node.$noReturn ? "statement" : "return")
+      )
+    }
+  },
+
+  Identifier: {
+    fields: ['name'],
+    compile: function (node, mode) {
+      return ExpressionToMode(loc(node, JS.Identifier(node.name)), mode);
+    }
+  },
+
+  NamespaceGet: {
+    fields: ['namespace', 'name', 'js_name'],
+    compile: function (node, mode) {
+      if (!Terr.INTERACTIVE) {
+        return compilers.Identifier.compile(
+          loc(node, {name: node.js_name}), mode);
+      }
+
+      return Terr.CompileToJS(Terr.Call(
+        Terr.Member(Terr.Identifier("$ENV"), Terr.Literal("get")),
+        [ Terr.Literal(node.namespace),
+          Terr.Literal(node.name) ]
+      ), mode);
+    }
+  },
+
+  NamespaceSet: {
+    fields: ['namespace', 'name', 'js_name', 'value', 'declaration'],
+    compile: function (node, mode) {
+      if (!Terr.INTERACTIVE) {
+        if (node.declaration == "var") {
+          return compilers.Var.compile(loc(node, {
+            pairs: [[Terr.Identifier(node.js_name), node.value]]
+          }), mode);
+        } else {
+          return compilers.Assign.compile(loc(node, {
+            left: Terr.Identifier(node.js_name),
+            right: node.value
+          }), mode);
+        }
+      }
+
+      return Terr.CompileToJS(Terr.Call(
+        Terr.Member(Terr.Identifier("$ENV"), Terr.Literal("set")),
+        [ Terr.Literal(node.namespace),
+          Terr.Literal(node.name),
+          node.value || Terr.Identifier('undefined') ]
+      ), mode);
+    }
+  },
+
+  Seq: {
+    fields: ['values'],
+    compile: function (node, mode) {
+      var statements = [];
+      for (var i = 0, len = node.values.length; i < len; ++i) {
+        if (i + 1 == len && (mode == "expression" || mode == "return")) {
+          statements = statements.concat(Terr.CompileToJS(node.values[i], "return"));
+        } else {
+          statements = statements.concat(Terr.CompileToJS(node.values[i], "statement"));
+        }
+      }
+
+      if (mode == "expression") {
+        return IIFE(statements);
+      } else {
+        return statements;
+      }
+    }
+  },
+
+  Var: {
+    fields: ['pairs'],
+    compile: function (node, mode) {
+
+      var symb, expr;
+
+      var mapped = node.pairs.map(function (pair) {
+        symb = Terr.CompileToJS(pair[0], "expression");
+        expr = Terr.CompileToJS(pair[1], "expression");
+        return JS.VariableDeclarator(symb, expr);
+      });
+
+      var decl = JS.VariableDeclaration(mapped);
+
+      if (mode == "expression") {
+        return expr;
+      } else if (mode == "statement") {
+        return [decl];
+      } else if (mode == "return") {
+        return [decl, JS.Return(symb)];
+      }
+    }
+  },
+
+  If: {
+    fields: ['test', 'cons', 'alt'],
+    compile: function (node, mode) {
+      var test = Terr.CompileToJS(node.test, "expression");
+
+      if (mode == "expression") {
+        return JS.ConditionalExpression(test,
+          node.cons ? Terr.CompileToJS(node.cons, "expression") : undefined,
+          node.alt ? Terr.CompileToJS(node.alt, "expression") : JS.Identifier("undefined"))
+      } else if (mode == "statement" || mode == "return") {
+        return [JS.IfStatement(test,
+                  intoBlock(node.cons, mode),
+                  intoBlock(node.alt, mode))]
+      }
+    }
+  },
+
+  Literal: {
+    fields: ['value'],
+    compile: function (node, mode) {
+      return ExpressionToMode(JS.Literal(node.value), mode);
+    }
+  },
+
+  Try: {
+    fields: ['body', 'catch_arg', 'catch', 'finally'],
+    compile: function (node, mode) {
+      if (mode == "expression" || mode == "return") {
+        var sub_mode = "return";
+      } else {
+        var sub_mode = "statement";
+      }
+
+      var tryStatement = JS.TryStatement(
+        JS.Block(Terr.CompileToJS(node.body, sub_mode)),
+        JS.CatchClause(
+          Terr.CompileToJS(node.catch_arg, "expression"),
+          JS.Block(Terr.CompileToJS(node.catch, sub_mode))
+        ),
+        node.finally ? JS.Block(Terr.CompileToJS(node.finally, "statement"))
+                     : undefined
+      )
+
+      if (mode == "statement" || mode == "return") {
+        return [tryStatement];
+      } else {
+        return IIFE([tryStatement]);
+      }
+    }
+  },
+
+  Member: {
+    fields: ['left', 'right'],
+    compile: function (node, mode) {
+      return ExpressionToMode(JS.MemberExpressionComputed(
+        Terr.CompileToJS(node.left, "expression"),
+        Terr.CompileToJS(node.right, "expression")
+      ), mode);
+    }
+  },
+
+  Obj: {
+    fields: ['properties'],
+    compile: function (node, mode) {
+      var props = [];
+      for (var i = 0, len = node.properties.length; i < len; ++i) {
+        var prop = node.properties[i];
+        props.push({
+          type: 'Property',
+          key: JS.Literal(prop.key),
+          value: Terr.CompileToJS(prop.value, "expression"),
+          kind: 'init'
+        });
+      }
+
+      return ExpressionToMode({ type: "ObjectExpression", properties: props }, mode);
+    }
+  },
+
+  Assign: {
+    fields: ['left', 'right'],
+    compile: function (node, mode) {
+      return ExpressionToMode(loc(node, JS.AssignmentExpression(
+        Terr.CompileToJS(node.left, "expression"),
+        "=",
+        Terr.CompileToJS(node.right, "expression")
+      )), mode);
+    }
+  },
+
+  Binary: {
+    fields: ['left', 'op', 'right'],
+    compile: function (node, mode) {
+      return ExpressionToMode(loc(node, JS.BinaryExpression(
+        Terr.CompileToJS(node.left, "expression"),
+        node.op,
+        Terr.CompileToJS(node.right, "expression")
+      )), mode);
+    }
+  },
+
+  Unary: {
+    fields: ['op', 'expr'],
+    compile: function (node, mode) {
+      return ExpressionToMode(loc(node, JS.UnaryExpression(
+        node.op,
+        Terr.CompileToJS(node.expr, "expression")
+      )), mode);
+    }
+  },
+
+  Call: {
+    fields: ['target', 'args'],
+    compile: function (node, mode) {
+      return ExpressionToMode(loc(node, JS.CallExpression(
+        Terr.CompileToJS(node.target, "expression"),
+        node.args.map(function (a) {
+          return Terr.CompileToJS(a, "expression");
+        })
+      )), mode);
+    }
+  },
+
+  Arr: {
+    fields: ['values'],
+    compile: function (node, mode) {
+      return ExpressionToMode(loc(node, JS.ArrayExpression(
+        node.values.map(function (a) {
+          return Terr.CompileToJS(a, "expression");
+        })
+      )), mode);
+    }
+  },
+
+  Return: {
+    fields: ['expression'],
+    compile: function (node, mode) {
+      if (mode == "expression") {
+        throw "Return in expression position? Is this real?"
+      }
+      return [loc(node,
+                  JS.Return(Terr.CompileToJS(node.expression, "expression")))];
+    }
+  },
+
+  New: {
+    fields: ['callee', 'args'],
+    compile: function (node, mode) {
+      return ExpressionToMode(JS.NewExpression(
+        Terr.CompileToJS(node.callee, "expression"),
+        node.args.map(function (a) {
+          return Terr.CompileToJS(a, "expression");
+        })
+      ), mode);
+    }
+  },
+
+  For: {
+    fields: ['init', 'test', 'update', 'body'],
+    compile: function (node, mode) {
+      return StatementToMode(JS.ForStatement(
+        intoBlock(node.init, "statement"),
+        Terr.CompileToJS(node.test, "expression"),
+        Terr.CompileToJS(node.update, "expression"),
+        intoBlock(node.body, "statement")
+      ), mode);
+    }
+  },
+
+  ForIn: {
+    fields: ['left', 'right', 'body'],
+    compile: function (node, mode) {
+      return StatementToMode(JS.ForInStatement(
+        intoBlock(node.left, "statement"),
+        Terr.CompileToJS(node.right, "expression"),
+        intoBlock(node.body, "statement")
+      ), mode);
+    }
+  },
+
+  While: {
+    fields: ['test', 'body'],
+    compile: function (node, mode) {
+      return StatementToMode(JS.WhileStatement(
+        Terr.CompileToJS(node.test, "expression"),
+        intoBlock(node.body, "statement")
+      ), mode);
+    }
+  },
+
+  Loop: {
+    fields: ['label', 'body'],
+    compile: function (node, mode) {
+      var loop_statement = JS.LabeledStatement(
+        Terr.CompileToJS(node.label, "expression"),
+        JS.WhileStatement(
+          JS.Literal(true),
+          intoBlock(node.body, "return")
+        )
+      );
+
+      if (mode == "return") {
+        return [loop_statement];
+      } else if (mode == "statement") {
+        return [JS.ExpressionStatement(IIFE([loop_statement]))];
+      } else if (mode == "expression") {
+        return IIFE([loop_statement]);
+      }
+    }
+  },
+
+  Continue: {
+    fields: ['label'],
+    compile: function (node, mode) {
+      if (mode == "expression") {
+        throw "Continue in expression position? Is this real?"
+      }
+
+      return JS.ContinueStatement(Terr.CompileToJS(node.label, "expression"));
+    }
+  },
+
+  Break: {
+    fields: ['label'],
+    compile: function (node, mode) {
+      if (mode == "expression") {
+        throw "Break in expression position? Is this real?"
+      }
+
+      return JS.BreakStatement(Terr.CompileToJS(node.label, "expression"));
+    }
+  },
+
+  Throw: {
+    fields: ['expression'],
+    compile: function (node, mode) {
+      var statement = JS.ThrowStatement(Terr.CompileToJS(node.expression, "expression"));
+      if (mode == "expression") {
+        return IIFE([statement]);
+      } else {
+        return [statement];
+      }
+    }
+  },
+
+  Splice: {
+    fields: ['value'],
+    compile: function (node, mode) {
+      throw "Cannot compile Splice to JS, should be stripped by parser."
+    }
+  }
+}
+
+function loc (node, js) {
+  if (node.loc) {
+    js.loc = node.loc;
+  }
+  if (node['x-verbatim']) {
+    js['x-verbatim'] = node['x-verbatim'];
+  }
+  return js;
+}
+
+function ExpressionToMode (node, mode) {
+  if (mode == "statement") {
+    return [JS.ExpressionStatement(node)];
+  } else if (mode == "return") {
+    return [JS.Return(node)];
+  }
+  return node;
+}
+
+function StatementToMode (node, mode) {
+  if (node == "expression") {
+    return IIFE([node]);
+  } else if (node == "return") {
+    return [JS.Return(IIFE([node]))];
+  } else {
+    return [node];
+  }
+}
+
+function IIFE (body) {
+  return JS.CallExpression(JS.FunctionExpression([], body), []);
+}
+
+// Reify constructors
+for (var k in compilers) {
+  exports[k] = (function (type, def) {
+    return function () {
+      var args = Array.prototype.slice.call(arguments);
+      var ret = {
+        type: type
+      };
+      for (var i = 0, len = args.length; i < len; ++i) {
+        ret[def[i]] = args[i];
+      }
+      return ret;
+    }
+  }(k, compilers[k].fields))
+}
+
+Terr.CompileToJS = function (ast, mode) {
+  if (ast === undefined) {
+    return ast;
+  } else if (compilers[ast.type]) {
+    return compilers[ast.type].compile(ast, mode);
+  } else {
+    console.trace();
+    console.log(ast);
+    throw "Implement Compiler for " + ast.type;
+  }
+}
+
+},{"./JS":1}],9:[function(require,module,exports){
+function walkProgramTree (handler, node) {
+  function walkTree () {
+    var args = Array.prototype.slice.call(arguments);
+
+    return function selfApp (node) {
+      if (node === undefined) return undefined;
+
+      var new_node, k;
+
+      result = handler.apply(null, [node, walkTree].concat(args))
+      if (result !== false) {
+        return result;
+      }
+
+      if (Array.isArray(node)) {
+        new_node = node.map(selfApp);
+        new_node.type = node.type;
+      } else if (typeof node == 'object') {
+        new_node = {};
+        for (k in node) {
+          new_node[k] = selfApp(node[k]);
+        }
+      } else {
+        new_node = node;
+      }
+
+      return new_node;
+    }
+  }
+
+  var walk_args = Array.prototype.slice.call(arguments, 2);
+
+  return walkTree.apply(null, walk_args)(node);
+}
+
+module.exports = walkProgramTree;
+
+},{}],10:[function(require,module,exports){
 (function(global){/*
   Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2012-2013 Michael Ficarra <escodegen.copyright@michael.ficarra.me>
@@ -3369,7 +5147,7 @@ exports.Scope = Scope;
 /* vim: set sw=4 ts=4 et tw=80 : */
 
 })(self)
-},{"./package.json":18,"estraverse":7,"source-map":8}],7:[function(require,module,exports){
+},{"./package.json":22,"estraverse":11,"source-map":12}],11:[function(require,module,exports){
 (function(){/*
   Copyright (C) 2012 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2012 Ariya Hidayat <ariya.hidayat@gmail.com>
@@ -3687,7 +5465,7 @@ exports.Scope = Scope;
 /* vim: set sw=4 ts=4 et tw=80 : */
 
 })()
-},{}],8:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 /*
  * Copyright 2009-2011 Mozilla Foundation and contributors
  * Licensed under the New BSD license. See LICENSE.txt or:
@@ -3697,7 +5475,7 @@ exports.SourceMapGenerator = require('./source-map/source-map-generator').Source
 exports.SourceMapConsumer = require('./source-map/source-map-consumer').SourceMapConsumer;
 exports.SourceNode = require('./source-map/source-node').SourceNode;
 
-},{"./source-map/source-map-consumer":13,"./source-map/source-map-generator":14,"./source-map/source-node":15}],9:[function(require,module,exports){
+},{"./source-map/source-map-consumer":17,"./source-map/source-map-generator":18,"./source-map/source-node":19}],13:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -3795,7 +5573,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./util":16,"amdefine":17}],10:[function(require,module,exports){
+},{"./util":20,"amdefine":21}],14:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -3941,7 +5719,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./base64":11,"amdefine":17}],11:[function(require,module,exports){
+},{"./base64":15,"amdefine":21}],15:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -3985,7 +5763,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":17}],12:[function(require,module,exports){
+},{"amdefine":21}],16:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -4068,7 +5846,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":17}],13:[function(require,module,exports){
+},{"amdefine":21}],17:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -4511,7 +6289,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./array-set":9,"./base64-vlq":10,"./binary-search":12,"./util":16,"amdefine":17}],14:[function(require,module,exports){
+},{"./array-set":13,"./base64-vlq":14,"./binary-search":16,"./util":20,"amdefine":21}],18:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -4894,7 +6672,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./array-set":9,"./base64-vlq":10,"./util":16,"amdefine":17}],15:[function(require,module,exports){
+},{"./array-set":13,"./base64-vlq":14,"./util":20,"amdefine":21}],19:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -5249,7 +7027,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./source-map-generator":14,"./util":16,"amdefine":17}],16:[function(require,module,exports){
+},{"./source-map-generator":18,"./util":20,"amdefine":21}],20:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -5368,7 +7146,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":17}],17:[function(require,module,exports){
+},{"amdefine":21}],21:[function(require,module,exports){
 (function(process,__filename){/** vim: et:ts=4:sw=4:sts=4
  * @license amdefine 0.0.5 Copyright (c) 2011, The Dojo Foundation All Rights Reserved.
  * Available via the MIT or new BSD license.
@@ -5670,7 +7448,7 @@ function amdefine(module, require) {
 module.exports = amdefine;
 
 })(require("__browserify_process"),"/../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js")
-},{"__browserify_process":28,"path":26}],18:[function(require,module,exports){
+},{"__browserify_process":28,"path":26}],22:[function(require,module,exports){
 module.exports=module.exports={
   "name": "escodegen",
   "description": "ECMAScript code generator",
@@ -5741,1188 +7519,8 @@ module.exports=module.exports={
   "_resolved": "https://registry.npmjs.org/escodegen/-/escodegen-0.0.24.tgz"
 }
 
-},{}],19:[function(require,module,exports){
-(function(){var walker = require('./walker')
-var core = require('./core')
-var JS = require('./js')
-var codegen = require('escodegen')
-var Terr = require('./terr-ast')
-
-function isSymbol(s)  { return s instanceof core.symbol; }
-function isKeyword(s) { return s instanceof core.keyword; }
-function isList(s)    { return s instanceof core.list; }
-function slice (a, i) { return Array.prototype.slice.call(a, i); }
-
-function extend(left, right) {
-  left = left || {};
-  for (var k in right) {
-    if (right.hasOwnProperty(k)) {
-      left[k] = right[k];
-    }
-  }
-  return left;
-}
-
-var reserved_words = ['break', 'do', 'instanceof', 'typeof', 'case', 'else', 'new',
-                      'var', 'catch', 'finally', 'return', 'void', 'continue', 'for',
-                      'switch', 'while', 'debugger', 'function', 'with', 'default', 'if',
-                      'throw', 'delete', 'in', 'try', 'class', 'enum', 'extends', 'super',
-                      'const', 'export', 'import', 'implements', 'let', 'private', 'public',
-                      'yield', 'interface', 'package', 'protected', 'static'];
-
-function mungeSymbol (str) {
-  return str.replace(/-/g, '_')
-    .replace(/\:/g, "_COLON_") .replace(/\+/g, "_PLUS_")     .replace(/\>/g, "_GT_")
-    .replace(/\</g, "_LT_")    .replace(/\=/g, "_EQ_")       .replace(/\~/g, "_TILDE_")
-    .replace(/\!/g, "_BANG_")  .replace(/\@/g, "_CIRCA_")    .replace(/\#/g, "_HASH_")
-    .replace(/\\'/g, "_QUOTE_").replace(/\"/g, "_DQUOTE_")   .replace(/\%/g, "_PERCENT_")
-    .replace(/\^/g, "_CARET_") .replace(/\&/g, "_AMPERSAND_").replace(/\*/g, "_STAR_")
-    .replace(/\|/g, "_BAR_")   .replace(/\{/g, "_LBRACE_")   .replace(/\}/g, "_RBRACE_")
-    .replace(/\[/g, "_LBRACK_").replace(/\]/g, "_RBRACK_")   .replace(/\//g, "_SLASH_")
-    .replace(/\\/g, "_BSLASH_").replace(/\?/g, "_QMARK_")    .replace(/\./g, "_DOT_")
-    .replace(RegExp("^(" + reserved_words.join("|") + ")$"), function (match) {
-      return match + "_";
-    });
-}
-
-builtins = {
-  "var": function (opts) {
-    var env = opts.env,
-        walker = opts.walker(env),
-        ns = env.env.current_namespace.name,
-        munged_ns = mungeSymbol(ns.replace(/\./g, '$')) + "$",
-        decls = [],
-        inputs = slice(arguments, 1);
-
-    for (var i = 0; i < inputs.length; i += 2) {
-      var id = inputs[i],
-          val = inputs[i + 1];
-
-      if (!isSymbol(id)) { throw "Var binding must be a symbol."; }
-
-      var parsed_id = id.parse(),
-          munged_name = mungeSymbol(parsed_id.root),
-          metadata = extend({ private: true }, id.$metadata);
-
-      if (parsed_id.namespace) { throw "Cannot var bind into another namespace." }
-      if (parsed_id.parts.length > 0) { throw "Cannot var bind a multi-part id." }
-
-      if (metadata.external) { // expose an outside global var
-        env.scope.addSymbol(munged_name, {
-          type: 'any',
-          accessor: Terr.Identifier(munged_name),
-          metadata: metadata
-        });
-
-        // no val associated, so backtrack one index
-        i = i - 1;
-      } else if (env.scope.logicalScoped(munged_name)) { // Just assign into existing var
-        var resolved = env.scope.resolve(munged_name);
-        if (resolved.metadata.constant) { throw "Cannot reassign a constant " + munged_name }
-
-        val = walker(val);
-        env.scope.update(munged_name, {
-          node: val,
-          metadata: metadata
-        });
-
-        if (val && val.type == "Fn") {
-          val.id = Terr.Identifier(munged_name);
-        }
-
-        if (resolved.top_level) {
-          decls.push(Terr.NamespaceSet(ns, munged_name, resolved.js_name, val, "assign"));
-        } else {
-          decls.push(Terr.Assign(Terr.Identifier(resolved.js_name), val));
-        }
-      } else {
-        var js_name = env.scope.nameClash(munged_name) ? env.genID(munged_name)
-                                                       : munged_name;
-
-        // this will change if/when non top-level def is supported
-        if (env.scope.top_level && !metadata.private) {
-          js_name = munged_ns + js_name;
-        }
-
-        var accessor = env.scope.top_level ? Terr.NamespaceGet(ns, munged_name, js_name)
-                                           : Terr.Identifier(js_name);
-
-        env.scope.addSymbol(munged_name, {
-          type: 'any',
-          accessor: accessor,
-          js_name: js_name,
-          top_level: env.scope.top_level,
-          metadata: metadata
-        });
-
-        val = walker(val);
-        env.scope.update(munged_name, { node: val });
-
-        if (val && val.type == "Fn") {
-          val.id = Terr.Identifier(munged_name);
-        }
-
-        if (env.scope.top_level) {
-          decls.push(Terr.NamespaceSet(ns, munged_name, js_name, val, "var"));
-        } else {
-          decls.push(Terr.Var([[accessor, val]]));
-        }
-      }
-    }
-
-    return Terr.Seq(decls);
-  },
-
-  "lambda": function (opts, args) {
-    var walker = opts.walker,
-        env = opts.env;
-
-    var compile_fn = function (args, body) {
-      var formal_args = [],
-          rest_arg = null,
-          fn_env = env.newScope(true, true),
-          consume_rest_arg = false;
-
-      args.forEach(function (arg, i) {
-        if (!isSymbol(arg)) { throw "Invalid formal arg " + arg; }
-
-        var parsed_arg = arg.parse();
-
-        if (parsed_arg.parts.length > 0) { throw "Invalid formal arg " + JSON.stringify(arg); }
-
-        if (parsed_arg.root == "&") {
-          consume_rest_arg = true;
-        } else if (consume_rest_arg) {
-          if (i !== args.length - 1) { throw "Too many args following rest &"; }
-
-          rest_arg = arg;
-        } else {
-          var munged_name = mungeSymbol(parsed_arg.root),
-              node = Terr.Identifier(munged_name);
-
-          fn_env.scope.addSymbol(munged_name, {
-            type: 'any',
-            accessor: node
-          });
-
-          formal_args.push(node);
-        }
-      });
-
-      fn_env.scope.addSymbol('arguments', {
-        type: 'Arguments',
-        accessor: Terr.Identifier('arguments')
-      });
-      fn_env.scope.addSymbol('this', {
-        type: 'Object',
-        accessor: Terr.Identifier('this')
-      });
-
-      if (rest_arg) {
-        body.unshift(
-          new core.list([new core.symbol("var"), rest_arg,
-                         new core.list([new core.symbol("Array.prototype.slice.call"),
-                                        new core.symbol("arguments"),
-                                        formal_args.length]) ]));
-      }
-
-      var terr_body = Terr.Seq(body.map(walker(fn_env)));
-
-      return Terr.SubFn(formal_args, terr_body, formal_args.length, rest_arg != null);
-    }; // end compile_fn
-
-    var forms =
-          isList(args) ? slice(arguments, 1).map(function (list) { return list.values; })
-                       : [[args].concat(slice(arguments, 2))],
-        arity_map = {},
-        arities = [],
-        variadic = null;
-
-    forms.forEach(function (form, i) {
-      var compiled = compile_fn(form[0], form.slice(1));
-
-      if (compiled.variadic) {
-        if (i !== forms.length - 1) {
-          throw "Variadic form must be in last position."
-        }
-        variadic = compiled.arity;
-        arity_map._ = compiled;
-        arities.push("_");
-      } else if (arity_map[compiled.arity]) {
-        throw "Cannot define same arity twice."
-      } else if (compiled.arity < arities[arities.length - 1]) {
-        throw "Multi-arity functions should be declared in ascending number of arguments."
-      } else {
-        arity_map[compiled.arity] = compiled;
-        arities.push(compiled.arity);
-      }
-    });
-
-    return Terr.Fn(arity_map, arities, variadic);
-  },
-
-  "ns": function (opts, ns) {
-    opts.env.env.current_namespace = opts.env.env.getNamespace(ns.name, true);
-
-    return Terr.Seq([]);
-  },
-
-  "set!": function (opts) {
-    var walker = opts.walker,
-        env = opts.env;
-
-    var settings = slice(arguments, 1);
-
-    if (settings.length % 2) {
-      throw "set! takes an even number of arguments"
-    }
-
-    walker = walker(env);
-
-    var seq = [];
-
-    for (var i = 0, len = settings.length; i < len; i += 2) {
-      var o_left = settings[i],
-          left = walker(o_left),
-          right = walker(settings[i + 1]);
-
-      if (isSymbol(o_left)) {
-        var left_parsed = o_left.parse();
-        if (left_parsed.parts.length === 0) {
-          var resolved = env.resolveSymbol(left_parsed);
-          if (resolved.metadata.constant) { throw "Cannot reassign constant " + o_left.name }
-        }
-      }
-
-      if (left.type == "NamespaceGet") {
-        left.type = "NamespaceSet";
-        left.value = right;
-        left.declaration = "assign";
-
-        seq.push(left);
-      } else {
-        seq.push(Terr.Assign(left, right));
-      }
-    }
-
-    if (seq.length == 1) {
-      return seq[0];
-    } else {
-      return Terr.Seq(seq);
-    }
-  },
-
-  "unquote-splicing": function (opts, arg) {
-    if (opts.env.quoted != "syntax") {
-      throw "Cannot call unquote-splicing outside of syntax-quote."
-    }
-    var result = opts.walker(opts.env.setQuoted(false))(arg);
-
-    return Terr.Splice(result);
-  }
-}
-
-function compile_eval (node, env) {
-  var ENV = {
-    get: function (namespace, name) {
-      if (namespace === null) {
-        return env.scope.resolve(name).value;
-      }
-      return env.findNamespace(namespace).scope.resolve(name).value;
-    },
-    set: function (namespace, name, value) {
-      if (namespace === null) {
-        env.scope.update(name, { value: value });
-      } else {
-        env.findNamespace(namespace).scope.update(name, { value: value });
-      }
-      return value;
-    }
-  };
-
-  // TODO: better way od doing this
-  Terr.INTERACTIVE = true;
-  var compile_nodes = Terr.CompileToJS(node, "return");
-
-  var js = codegen.generate(JS.Program(compile_nodes));
-  try {
-    return new Function('$ENV', js)(ENV);
-  } catch (exc) {
-    console.log(exc, js);
-    throw exc;
-  }
-}
-
-function loc (node, form) {
-  if (node.loc) { form.loc = node.loc; }
-  return form;
-}
-
-walk_handlers = {
-  "List": function (node, walker, env) {
-
-    // easier bound version
-    var _loc = function (form) {
-      return loc(node, form);
-    }
-
-    var head = node.values[0],
-        tail = node.values.slice(1),
-        o_walker = walker,
-        walker = walker(env);
-
-    // Quoting
-    if (env.quoted && (!isSymbol(head) || (head.name !== 'unquote' &&
-                                           head.name !== "unquote-splicing"))) {
-      var values = node.values.map(walker),
-          list_symb = o_walker(env.setQuoted(false))(
-            new core.list([new core.symbol('terrible.core/list')])
-          );
-
-      if (env.quoted == "syntax") {
-        return _loc(values.reduce(function (left, right) {
-          if (right.type == "Splice") {
-            left = Terr.Call(Terr.Member(left, Terr.Literal("concat")), [right.value]);
-            left.$concat = true;
-          } else {
-            if (left.$concat) {
-              left = Terr.Call(Terr.Member(left, Terr.Literal("push")), [right]);
-            } else {
-              left.args.push(right);
-            }
-          }
-          return left;
-        }, list_symb));
-      } else {
-        list_symb.args = values;
-        return _loc(list_symb);
-      }
-    }
-
-    // Symbol dispatch
-    if (head && isSymbol(head)) {
-
-      var parsed_head = head.parse(),
-          name = parsed_head.root;
-
-      // (.concat [1 2 3] [4 5 6])
-      if (parsed_head.root == "") {
-        var target = parsed_head.parts.reduce(function (left, right) {
-          return Terr.Member(left, Terr.Literal(right));
-        }, walker(tail[0]));
-
-        return _loc(Terr.Call(target, tail.slice(1).map(walker)));
-      }
-
-      // (a.b 1 2 3)
-      if (parsed_head.parts.length > 0) {
-        return _loc(Terr.Call(walker(head), tail.map(walker)));
-      }
-
-      // (var a 5)
-      if (builtins[name]) {
-        return _loc(builtins[name].apply(null, [{
-          walker: o_walker,
-          env: env
-        }].concat(tail)));
-      }
-
-      var resolved = env.resolveSymbol(parsed_head);
-      if (resolved === false) { throw "Couldn't resolve " + name; }
-
-      // terr-macros and macros
-      if (resolved.metadata['terr-macro']) {
-        return _loc(resolved.value.apply(null, [{
-          walker: o_walker,
-          env: env,
-          Terr: Terr,
-          extend: extend,
-          builtins: builtins,
-          mungeSymbol: mungeSymbol
-        }].concat(tail)));
-      } else if (resolved.metadata['macro']) {
-        return _loc(walker(resolved.value.apply(null, tail)));
-      }
-
-      // Check arities match and specialise for multi-arity functions.
-      if (resolved.node && resolved.node.type == "Fn") {
-        var fn_node = resolved.node,
-            target = walker(head);
-
-        if (~fn_node.arities.indexOf(tail.length)) {
-          // Don't specialise the call if interactive, as it could change underneath us.
-          if (!env.env.interactive && fn_node.arities.length > 1) {
-            target = Terr.Member(target, Terr.Literal("$" + tail.length));
-          }
-        } else if (fn_node.variadic != null && tail.length >= fn_node.variadic) {
-          if (!env.env.interactive && fn_node.arities.length > 1) {
-            target = Terr.Member(target, Terr.Literal("$_"));
-          }
-        } else {
-          throw "Function `" + name + "` expects " + fn_node.arities +
-                " arguments, " + tail.length + " provided."
-        }
-      } else if (resolved.type != "any") {
-        throw "Cannot call " + resolved.type + " `" + name + "` as function."
-      }
-
-      return _loc(Terr.Call(loc(head, target || walker(head)),
-                            tail.map(walker)));
-    } else if (head && isList(head)) {
-      return _loc(Terr.Call(walker(head), tail.map(walker)));
-    } else {
-      throw "Cannot call `" + JSON.stringify(head) + "` as function."
-    }
-  },
-
-  "Symbol": function (node, walker, env) {
-
-    if (env.quoted == "quote" || (env.quoted == "syntax" && builtins[node.name])) {
-      walker = walker(env.setQuoted(false));
-      return loc(node, Terr.Call(
-        walker(new core.symbol('terrible.core/symbol')),
-        [Terr.Literal(node.name)]
-      ));
-    } else if (env.quoted == "syntax") {
-      var parsed_node = node.parse();
-      var resolved = env.resolveSymbol(parsed_node);
-
-      walker = walker(env.setQuoted(false));
-
-      if (!resolved) {
-        if (parsed_node.root.match(/#$/)) {
-          // TODO: insert safely
-          return loc(node, Terr.Call(
-            walker(new core.symbol('terrible.core/symbol')),
-            [Terr.Literal(node.name)]
-          ));
-        } else {
-          throw "Couldn't resolve `" + node.name + "`";
-        }
-      }
-
-      var ns = parsed_node.namespace || env.env.current_namespace.name;
-
-      return loc(node, Terr.Call(
-        walker(new core.symbol('terrible.core/symbol')),
-        [Terr.Literal(ns + "/" + [parsed_node.root].concat(parsed_node.parts).join("."))]
-      ));
-    }
-
-    var parsed_node = node.parse();
-    var resolved = env.resolveSymbol(parsed_node);
-
-    if (!resolved) {
-      console.trace();
-      console.log("Couldn't resolve", node.name);
-      throw "Couldn't resolve `" + node.name + "`";
-    }
-
-    if (resolved.metadata.constant) { return resolved.node; }
-
-    if (resolved.top_level) {
-      var root = Terr.NamespaceGet(
-        parsed_node.namespace || env.env.current_namespace.name,
-        mungeSymbol(parsed_node.root),
-        resolved.accessor.js_name
-      );
-    } else {
-      var root = resolved.accessor;
-    }
-
-    var walker = walker(env);
-
-    for (var i = 0, len = parsed_node.parts.length; i < len; ++i) {
-      root = Terr.Member(root, walker(parsed_node.parts[i]));
-    }
-
-    return loc(node, root);
-  }
-}
-
-walk_handler = function (node, walker, env) {
-  if (isList(node)) {
-    return walk_handlers.List(node, walker, env);
-  } if (isKeyword(node)) {
-    return walker(env)(new core.list([new core.symbol("terrible.core/keyword"), node.name]));
-  } else if (isSymbol(node)) {
-    return walk_handlers.Symbol(node, walker, env);
-  } else if (Array.isArray(node)) {
-    return Terr.Arr(node.map(walker(env)));
-  } else if (node === null) {
-    return Terr.Literal(null);
-  } else if (node instanceof RegExp) {
-    return Terr.Literal(node);
-  } else if (typeof node == 'object') {
-    var props = [];
-    walker = walker(env);
-
-    for (var k in node) {
-      props.push({key: k, value: walker(node[k])});
-    }
-
-    return Terr.Obj(props);
-  } else {
-    return Terr.Literal(node);
-  }
-};
-
-function WalkingEnv(env, scope, quoted) {
-  this.env = env;
-  this.scope = scope;
-  this.quoted = quoted;
-}
-
-WalkingEnv.prototype.genID = function (root) {
-  return this.env.genID(root);
-};
-
-WalkingEnv.prototype.newScope = function (logical, js) {
-  return new WalkingEnv(this.env, this.scope.newScope(logical, js), this.quoted);
-};
-
-WalkingEnv.prototype.setQuoted = function (quoted) {
-  return new WalkingEnv(this.env, this.scope.newScope(false, false), quoted);
-};
-
-WalkingEnv.prototype.resolveSymbol = function (parsed_symbol) {
-  if (parsed_symbol.namespace) {
-    var ns = this.scope.resolveNamespace(parsed_symbol.namespace) ||
-             this.env.findNamespace(parsed_symbol.namespace);
-
-    if (!ns) {
-      throw "Couldn't find namespace `" + parsed_symbol.namespace + "`"
-    }
-
-    parsed_symbol.namespace = ns.name;
-
-    this.env.current_namespace.requiresNamespace(ns);
-    var scope = ns.scope;
-  } else {
-    var scope = this.scope;
-  }
-
-  return scope.resolve(mungeSymbol(parsed_symbol.root));
-};
-
-exports.process = function (form, env, quoted) {
-  var walking_env = new WalkingEnv(env, env.current_namespace.scope, quoted),
-      ast = walker(walk_handler, form, walking_env),
-      value = compile_eval(ast, env);
-
-  return { ast: ast, value: value };
-};
-exports.mungeSymbol = mungeSymbol;
-
-})()
-},{"./core":3,"./js":4,"./terr-ast":22,"./walker":23,"escodegen":6}],20:[function(require,module,exports){
-(function(){// A partial port and modification of the Clojure reader
-// https://github.com/clojure/clojure/blob/master/src/jvm/clojure/lang/LispReader.java
-
-var core = require('./core')
-
-// Buffer
-
-function EOFError () {}
-
-function Buffer (string) {
-  this.string = string;
-  this.pos = 0;
-  this.line = 0;
-  this.col = 0;
-}
-
-Buffer.prototype.read1 = function () {
-  if (this.pos === this.string.length) {
-    ++this.pos;
-    ++this.col;
-    return " ";
-  } else if (this.pos > this.string.length) {
-    throw new EOFError();
-  } else {
-    var ch = this.string[this.pos];
-    ++this.pos;
-    if (ch == "\n") {
-      ++this.line;
-      this.col = 0;
-    } else {
-      ++this.col;
-    }
-    return ch;
-  }
-}
-
-Buffer.prototype.getPos = function () {
-  return { line: this.line, column: this.col }
-}
-
-Buffer.prototype.save = function () {
-  return {
-    line: this.line,
-    col: this.col,
-    pos: this.pos
-  }
-}
-
-Buffer.prototype.restore = function (d) {
-  this.line = d.line;
-  this.col = d.col;
-  this.pos = d.pos;
-}
-
-Buffer.prototype.lookahead = function (n) {
-  return this.string.substring(this.pos, this.pos + n);
-}
-
-Buffer.prototype.unread = function (str) {
-  this.pos -= str.length;
-}
-
-Buffer.prototype.append = function (str) {
-  this.string += str;
-}
-
-Buffer.prototype.truncate = function () {
-  this.string = this.string.substring(0, this.pos);
-}
-
-Buffer.prototype.remaining = function () {
-  return this.string.substring(this.pos);
-}
-
-Buffer.prototype.locationFromState = function (start_state) {
-  return {
-    start: {
-      line: start_state.line,
-      column: start_state.col
-    },
-    end: {
-      line: this.line,
-      column: this.col
-    }
-  }
-}
-
-// Reader
-
-var symbolPattern = /^([:][^\d\s]|[^:\d\s])[^\n\t\r\s,]*$/
-
-// Reader macros
-
-function unmatchedDelimiter(c) {
-  return function () {
-    throw "UnmatchedDelimiter `" + c + "`";
-  }
-}
-
-function listReader (buffer, openparen) {
-  return new core.list(this.readDelimitedList(')', buffer));
-}
-
-function vectorReader (buffer, openparen) {
-  return this.readDelimitedList(']', buffer);
-}
-
-function hashReader (buffer, openparen) {
-  var hash = this.readDelimitedList('}', buffer);
-  if (hash.length % 2) {
-    throw "Hash must contain even number of forms";
-  }
-  var obj = {}
-  for (var i = 0, len = hash.length; i < len; i += 2) {
-    var left = hash[i];
-    var right = hash[i+1];
-    if (left instanceof core.keyword) {
-      obj[left.name] = right;
-    } else {
-      obj[left] = right;
-    }
-  }
-  return obj;
-}
-
-function commentReader (buffer) {
-  while (!buffer.read1().match(/[\n\r]/));
-  return buffer;
-}
-
-function quoteReader (buffer, apostrophe) {
-  return new core.list([new core.symbol('quote'), this.read(buffer)]);
-}
-
-function syntaxQuoteReader (buffer, tick) {
-  return new core.list([new core.symbol('syntax-quote'), this.read(buffer)]);
-}
-
-function unquoteReader (buffer, apostrophe) {
-  if (buffer.lookahead(1) == "@") {
-    buffer.read1();
-    return new core.list([new core.symbol('unquote-splicing'), this.read(buffer)]);
-  } else {
-    return new core.list([new core.symbol('unquote'), this.read(buffer)]);
-  }
-}
-
-function splatReader (buffer, tilde) {
-  return new core.list([new core.symbol('splat'), this.read(buffer)]);
-}
-
-function metadataReader (buffer, caret) {
-  var ch = buffer.lookahead(1);
-  if (this.isWhitespace(ch)) {
-    return this.read(buffer);
-  } else {
-    var metaform = this.read(buffer);
-    if (metaform instanceof core.keyword) {
-      var kw = metaform;
-      metaform = {};
-      metaform[kw.name] = true;
-    }
-    var form = this.read(buffer);
-    if (form instanceof core.symbol) {
-      form.$metadata = metaform;
-      return form;
-    } else {
-      throw "Can only attach metadata to symbols";
-    }
-  }
-}
-
-function stringReader (buffer, quote) {
-  var str = "", docquote = false, ch;
-
-  if (buffer.lookahead(2) == '""') {
-    var docquote = true;
-    buffer.read1();
-    buffer.read1();
-  }
-
-  while (ch = buffer.read1()) {
-    if (ch == '"') {
-      if (docquote) {
-        if (buffer.lookahead(2) == '""') {
-          buffer.read1();
-          buffer.read1();
-          break;
-        } else {
-          str += ch;
-          continue;
-        }
-      } else {
-        break;
-      }
-    }
-
-    if (ch == "\\") {
-      ch = buffer.read1();
-
-      if (ch == "t") { ch = "\t"; }
-      else if (ch == "r") { ch = "\r"; }
-      else if (ch == "n") { ch = "\n"; }
-      else if (ch == "b") { ch = "\b"; }
-      else if (ch == "f") { ch = "\f"; }
-      else if (ch == "\\" || ch == '"') { }
-      else { throw "Unsupported escape \\" + ch + JSON.stringify(buffer.getPos()) }
-    }
-
-    str += ch;
-  }
-
-  return str;
-}
-
-dispatchReader = function (buffer, hash) {
-  var ch = buffer.read1();
-  if (this.dispatch_macros[ch]) {
-    return this.dispatch_macros[ch].call(this, buffer, ch);
-  } else {
-    if (buffer.dispatch_handler) {
-      return buffer.dispatch_handler(this, ch, buffer);
-    } else {
-      throw "dispatch on symbol but no Buffer dispatch_handler"
-    }
-  }
-}
-
-function findArg (reader, n) {
-  for (var i = 0, len = reader.ARG_ENV.length; i < len; ++i) {
-    var arg = reader.ARG_ENV[i];
-    if (n === arg.n) return arg;
-  }
-}
-
-gen_arg = function (reader, n) {
-  var root = (n === -1) ? "rest" : "arg$" + n;
-  return new core.symbol(reader.genID(root));
-}
-
-function registerArg (reader, n) {
-  if (!reader.ARG_ENV) {
-    throw "arg lit not in #()"
-  }
-
-  var arg = findArg(reader, n);
-  if (arg == null) {
-    var symbol = gen_arg(reader, n);
-    reader.ARG_ENV.push({n: n, symbol: symbol});
-    return symbol;
-  } else {
-    return arg.symbol;
-  }
-}
-
-argReader = function (buffer, percent) {
-  if (!this.ARG_ENV) {
-    return this.readToken(buffer, percent);
-  }
-
-  var ch = buffer.lookahead(1);
-
-  if (this.isWhitespace(ch) || this.isTerminatingMacro(ch)) {
-    return registerArg(this, 1);
-  } else if (ch == ".") {
-    var root = registerArg(this, 1);
-    var symb = this.read(buffer);
-
-    return new core.symbol(root.name + symb.name);
-  } else if (this.isDigit(ch)) {
-
-    var n = buffer.read1();
-    var buffer_state = buffer.save();
-    ch = buffer.read1();
-
-    while (this.isDigit(ch)) {
-      n += ch;
-      buffer_state = buffer.save();
-      ch = buffer.read1();
-    }
-
-    buffer.restore(buffer_state);
-
-    var n = parseFloat(n);
-
-    var root = registerArg(this, n);
-
-    if (buffer.lookahead(1) == ".") {
-      var symb = this.read(buffer);
-      return new core.symbol(root.name + symb.name);
-    } else {
-      return root;
-    }
-  }
-
-  var n = this.read(buffer);
-
-  if (n instanceof core.symbol && n.name == '&') {
-    return this.registerArg(-1);
-  }
-
-  if (typeof n != 'number') {
-    throw 'arg literal must be %, %& or %n ' + JSON.stringify(buffer.getPos())
-  }
-
-  return this.registerArg(n);
-}
-
-fnReader = function (buffer, openparen) {
-  buffer.unread(openparen);
-
-  var originalENV = this.ARG_ENV;
-
-  this.ARG_ENV = [];
-
-  var form = this.read(buffer);
-
-  if (originalENV && this.ARG_ENV.length != 0) {
-    throw "Cannot nest lambdas with arguments. " + JSON.stringify(buffer.getPos())
-  }
-
-  if (this.ARG_ENV.length > 0) {
-    this.ARG_ENV.sort(function (a, b) {
-      if (a.n == -1) return 1;
-      if (b.n == -1) return -1;
-      return a.n > b.n;
-    });
-
-    if (this.ARG_ENV[this.ARG_ENV.length - 1].n === -1) {
-      var rest_arg = this.ARG_ENV.pop().symbol;
-    } else {
-      var rest_arg = null;
-    }
-
-    var args = [];
-    for (var i = 0, len = this.ARG_ENV.length; i < len; ++i) {
-      args[this.ARG_ENV[i].n - 1] = this.ARG_ENV[i].symbol;
-    }
-
-    for (var i = 0, len = args.length; i < len; ++i) {
-      if (!args[i]) {
-        args[i] = gen_arg(this, i + 1);
-      }
-    }
-
-    if (rest_arg) {
-      args.push(new core.symbol('&'));
-      args.push(rest_arg);
-    }
-  } else {
-    var args = [];
-  }
-
-  this.ARG_ENV = originalENV;
-
-  if (form.values[0] && !(form.values[0] instanceof core.symbol)) {
-    return new core.list([new core.symbol('lambda'), args].concat(form.values));
-  } else {
-    return new core.list([new core.symbol('lambda'), args, form]);
-  }
-}
-
-function Reader (id_generator) {
-  this.genID = id_generator;
-}
-
-Reader.prototype.macros = {
-  "[": vectorReader,
-  "{": hashReader,
-  "(": listReader,
-  "]": unmatchedDelimiter("]"),
-  "}": unmatchedDelimiter("}"),
-  ")": unmatchedDelimiter(")"),
-  ";": commentReader,
-  "`": syntaxQuoteReader,
-  "'": quoteReader,
-  "~": unquoteReader,
-  "@": splatReader,
-  '"': stringReader,
-  '%': argReader,
-  '#': dispatchReader,
-  '^': metadataReader
-}
-
-Reader.prototype.dispatch_macros = {
-  '(': fnReader
-}
-
-Reader.prototype.isWhitespace = function (str) { return str.match(/[\t\r\n,\s]/); }
-Reader.prototype.isDigit = function (str) { return /^[0-9]$/.exec(str); }
-Reader.prototype.isNumber = function (n) { return !isNaN(parseFloat(n)) && isFinite(n); }
-Reader.prototype.isTerminatingMacro = function (ch) {
-  return this.macros[ch] && ch != '#' && ch != '\'' && ch != '%'
-}
-
-function annotateLocation (form, buffer, start_state) {
-  if (form !== null && typeof form === "object") {
-    form.loc = buffer.locationFromState(start_state);
-  }
-  return form;
-}
-
-Reader.prototype.read = function (buffer) {
-  while (true) {
-    var ch, macro;
-
-    var start_state = buffer.save();
-    var ch = buffer.read1();
-
-    while (this.isWhitespace(ch)) {
-      start_state = buffer.save();
-      ch = buffer.read1();
-    }
-
-    if (this.isDigit(ch)) {
-      return this.readNumber(buffer, ch);
-    }
-
-    if (macro = this.macros[ch]) {
-      var ret = macro.call(this, buffer, ch);
-      if (ret == buffer) {
-        continue;
-      } else {
-        return annotateLocation(ret, buffer, start_state);
-      }
-    }
-
-    if (ch == '+' || ch == '-') {
-      var buffer_state = buffer.save();
-      var ch2 = buffer.read1();
-      if (this.isDigit(ch2)) {
-        var n = this.readNumber(buffer, ch2);
-        return annotateLocation(new core.list([new core.symbol(ch), n]), buffer, start_state);
-      } else {
-        buffer.restore(buffer_state);
-      }
-    }
-
-    return annotateLocation(this.readToken(buffer, ch), buffer, start_state);
-  }
-}
-
-Reader.prototype.readNumber = function (buffer, s) {
-  while (true) {
-    var buffer_state = buffer.save();
-    var ch = buffer.read1();
-    if (this.isWhitespace(ch) || this.macros[ch]) {
-      buffer.restore(buffer_state);
-      break;
-    }
-    s += ch;
-  }
-
-  if (!this.isNumber(s)) {
-    throw "Invalid number: " + s + " " + JSON.stringify(buffer.getPos())
-  }
-
-  return parseFloat(s);
-}
-
-Reader.prototype.reifySymbol = function (s) {
-  if (s == 'nil' || s == 'null') return null;
-  if (s == 'true') return true;
-  if (s == 'false') return false;
-  if (s == 'undefined') return new core.symbol('undefined');
-  if (symbolPattern.exec(s)) return new core.symbol(s);
-
-  throw "Invalid token: #{s}";
-}
-
-Reader.prototype.readToken = function (buffer, s) {
-  if (s == ":") { // keyword
-    var kw = "";
-    while (true) {
-      var buffer_state = buffer.save();
-      var ch = buffer.read1();
-      if (this.isWhitespace(ch) || this.isTerminatingMacro(ch)) {
-        buffer.restore(buffer_state);
-        if (kw === "") {
-          return new core.symbol(s);
-        } else {
-          return new core.keyword(kw);
-        }
-      }
-      kw += ch;
-    }
-  } else { // symbol
-    while (true) {
-      var buffer_state = buffer.save();
-      var ch = buffer.read1();
-      if (this.isWhitespace(ch) || this.isTerminatingMacro(ch)) {
-        buffer.restore(buffer_state);
-        return this.reifySymbol(s);
-      }
-      s += ch;
-    }
-  }
-}
-
-Reader.prototype.readDelimitedList = function (endchar, buffer) {
-  var forms = [], ch, macro, ret, buffer_state;
-  while (true) {
-    buffer_state = buffer.save();
-    ch = buffer.read1();
-    while (this.isWhitespace(ch)) {
-      buffer_state = buffer.save();
-      ch = buffer.read1();
-    }
-
-    if (ch === endchar) break;
-
-    if (macro = this.macros[ch]) {
-      ret = macro.call(this, buffer, ch);
-    } else {
-      buffer.restore(buffer_state);
-      ret = this.read(buffer);
-    }
-    if (ret != buffer) {
-      forms.push(ret);
-    }
-  }
-
-  return forms;
-}
-
-Reader.prototype.readString = function (str) {
-  return this.newReadSession().readString(str);
-}
-
-Reader.prototype.newReadSession = function () {
-  var buffer = new Buffer(""),
-      reader = this;
-
-  return {
-    buffer: buffer,
-    readString: function (str, form_handler, dispatch_handler) {
-      buffer.append(str);
-      buffer.dispatch_handler = dispatch_handler;
-      var forms = [], buffer_state;
-      try {
-        buffer_state = buffer.save();
-        while (form = reader.read(buffer)) {
-
-          form.$text = buffer.string.substring(buffer_state.pos, buffer.pos);
-
-          form_handler(null, form);
-
-          buffer_state = buffer.save();
-        }
-      } catch (exception) {
-        if (exception instanceof EOFError) {
-          buffer.restore(buffer_state);
-          return;
-        } else {
-          form_handler(exception);
-          return;
-        }
-      }
-    }
-  }
-}
-
-// Debug and testing
-
-print_str = function (node) {
-  if (node === null) {
-    return "null";
-  } if (node.$isList) {
-    return "(" + node.values.map(print_str).join(" ") + ")";
-  } else if (node.type == "Symbol") {
-
-    var root = node.parts[0];
-
-    for (var i = 1, len = node.parts.length; i < len; ++i) {
-      root += "[" + print_str(node.parts[i]) + "]"
-    }
-
-    return root;
-  } else if (node.type == "Keyword") {
-    return ":" + node.toString();
-  } else if (Array.isArray(node)) {
-    return "[" + node.map(print_str).join(" ") + "]";
-  } else if (typeof node == "object") {
-    return "{" + Object.keys(node).map(function (k) {
-      return print_str(k) + ' ' + print_str(node[k])
-    }).join(" ") + "}"
-  } else {
-    return JSON.stringify(node);
-  }
-}
-
-try_parse = function (str) {
-  result = reader.readString(str);
-  console.log(require('util').inspect(result, false, 10));
-  console.log(result.map(print_str).join("\n"))
-}
-
-// var reader = new Reader()
-// try_parse("(a.b[(+ 1 2)][:a] [1 2 3] {:a 5 :b 6})");
-// try_parse('(a """my fun " string""")')
-
-exports.Reader = Reader
-exports.printString = print_str;
-
-})()
-},{"./core":3,"util":27}],21:[function(require,module,exports){
-var Environment = require('../Environment').Environment;
+},{}],23:[function(require,module,exports){
+var Environment = require('../lib/environment').Environment;
 
 // INPUT OUTPUT
 
@@ -7095,605 +7693,7 @@ document.getElementById('io-toggle').addEventListener('click', function () {
   document.querySelector('body').setAttribute('class', 'input-output');
 });
 
-},{"../Environment":1}],22:[function(require,module,exports){
-var JS = require('./JS');
-
-var Terr = exports;
-
-Terr.INTERACTIVE = false;
-
-function intoBlock (node, mode) {
-  if (node !== undefined) {
-    var r = Terr.CompileToJS(node, mode);
-    if (r.length == 1) {
-      return r[0];
-    } else {
-      return JS.Block(r);
-    }
-  } else {
-    if (mode == "return") {
-      return JS.Return();
-    } else {
-      return undefined;
-    }
-  }
-}
-
-var compilers = {
-  Fn: {
-    fields: ['bodies', 'arities', 'variadic'],
-    compile: function (node, mode) {
-      var bodies = node.arities.map(function (k) {
-        if (node.$noReturn) {
-          node.bodies[k].$noReturn = true;
-        }
-        return Terr.CompileToJS(node.bodies[k], "expression");
-      });
-
-      if (node.id) {
-        var fndef = Terr.CompileToJS(node.id, "expression");
-      } else {
-        var fndef = JS.Identifier("$fndef");
-      }
-
-      if (node.arities.length == 1) {
-        var fn = bodies[0];
-
-        if (node.id) {
-          fn.id = fndef;
-        }
-
-        if (mode == "statement") {
-          if (fn.id) {
-            fn.type = "FunctionDeclaration";
-            return fn;
-          } else {
-            return [JS.ExpressionStatement(fn)];
-          }
-        } else if (mode == "return") {
-          return [JS.Return(fn)];
-        } else if (mode == "expression") {
-          return fn;
-        }
-      } else {
-
-        if (node.variadic !== null) {
-          var max_arity = Math.max.apply(Math, node.arities.slice(0, node.arities.length - 1).concat([node.variadic]));
-        } else {
-          var max_arity = Math.max.apply(Math, node.arities);
-        }
-
-        var dispatch_args = [];
-        for (var i = 0; i < max_arity; ++i) {
-          dispatch_args.push(JS.Identifier("$" + i));
-        }
-
-        var args_len = JS.Identifier('$args_len');
-
-        var dispatch_body = [JS.VariableDeclaration([
-          JS.VariableDeclarator(
-            args_len,
-            JS.MemberExpressionComputed(JS.Identifier("arguments"), JS.Literal("length"))
-          )
-        ])];
-
-        var closure_body = [];
-
-        node.arities.forEach(function (arity, i) {
-
-          var app_name = JS.Literal("$" + arity);
-
-          if (arity == "_") {
-            dispatch_body.push(
-              JS.IfStatement(
-                JS.BinaryExpression(args_len, ">=", JS.Literal(node.variadic)),
-                JS.Return(JS.CallExpression(
-                  JS.MemberExpressionComputed(
-                    JS.MemberExpressionComputed(fndef, app_name),
-                    JS.Literal("apply")
-                  ),
-                  [JS.Identifier("this"), JS.Identifier("arguments")]
-                ))
-              )
-            )
-          } else {
-            dispatch_body.push(
-              JS.IfStatement(
-                JS.BinaryExpression(args_len, "==", JS.Literal(arity)),
-                JS.Return(JS.CallExpression(
-                  JS.MemberExpressionComputed(
-                    JS.MemberExpressionComputed(fndef, app_name),
-                    JS.Literal("call")
-                  ),
-                  [JS.Identifier("this")].concat(dispatch_args.slice(0, arity))
-                ))
-              )
-            )
-          }
-
-          closure_body.push(
-            JS.ExpressionStatement(JS.AssignmentExpression(
-              JS.MemberExpressionComputed(fndef, app_name),
-              "=",
-              bodies[i]
-            ))
-          );
-        });
-
-        dispatch_body.push(JS.ThrowStatement(JS.Literal("No matching arity.")));
-
-        var dispatch_fn = JS.FunctionDeclaration(fndef, dispatch_args, dispatch_body);
-
-        closure_body.unshift(dispatch_fn);
-
-        if (mode == "return") {
-          closure_body.push(JS.Return(fndef));
-          return closure_body;
-        } else if (mode == "statement") {
-          return closure_body;
-        } else {
-          closure_body.push(JS.Return(fndef));
-          return IIFE(closure_body);
-        }
-      }
-    }
-  },
-
-  SubFn: {
-    fields: ['args', 'body', 'arity', 'variadic'],
-    compile: function (node, mode) {
-      return JS.FunctionExpression(
-        node.args.map(function (n) { return Terr.CompileToJS(n, "expression"); }),
-        Terr.CompileToJS(node.body, node.$noReturn ? "statement" : "return")
-      )
-    }
-  },
-
-  Identifier: {
-    fields: ['name'],
-    compile: function (node, mode) {
-      return ExpressionToMode(loc(node, JS.Identifier(node.name)), mode);
-    }
-  },
-
-  NamespaceGet: {
-    fields: ['namespace', 'name', 'js_name'],
-    compile: function (node, mode) {
-      if (!Terr.INTERACTIVE) {
-        return compilers.Identifier.compile(
-          loc(node, {name: node.js_name}), mode);
-      }
-
-      return Terr.CompileToJS(Terr.Call(
-        Terr.Member(Terr.Identifier("$ENV"), Terr.Literal("get")),
-        [ Terr.Literal(node.namespace),
-          Terr.Literal(node.name) ]
-      ), mode);
-    }
-  },
-
-  NamespaceSet: {
-    fields: ['namespace', 'name', 'js_name', 'value', 'declaration'],
-    compile: function (node, mode) {
-      if (!Terr.INTERACTIVE) {
-        if (node.declaration == "var") {
-          return compilers.Var.compile(loc(node, {
-            pairs: [[Terr.Identifier(node.js_name), node.value]]
-          }), mode);
-        } else {
-          return compilers.Assign.compile(loc(node, {
-            left: Terr.Identifier(node.js_name),
-            right: node.value
-          }), mode);
-        }
-      }
-
-      return Terr.CompileToJS(Terr.Call(
-        Terr.Member(Terr.Identifier("$ENV"), Terr.Literal("set")),
-        [ Terr.Literal(node.namespace),
-          Terr.Literal(node.name),
-          node.value || Terr.Identifier('undefined') ]
-      ), mode);
-    }
-  },
-
-  Seq: {
-    fields: ['values'],
-    compile: function (node, mode) {
-      var statements = [];
-      for (var i = 0, len = node.values.length; i < len; ++i) {
-        if (i + 1 == len && (mode == "expression" || mode == "return")) {
-          statements = statements.concat(Terr.CompileToJS(node.values[i], "return"));
-        } else {
-          statements = statements.concat(Terr.CompileToJS(node.values[i], "statement"));
-        }
-      }
-
-      if (mode == "expression") {
-        return IIFE(statements);
-      } else {
-        return statements;
-      }
-    }
-  },
-
-  Var: {
-    fields: ['pairs'],
-    compile: function (node, mode) {
-
-      var symb, expr;
-
-      var mapped = node.pairs.map(function (pair) {
-        symb = Terr.CompileToJS(pair[0], "expression");
-        expr = Terr.CompileToJS(pair[1], "expression");
-        return JS.VariableDeclarator(symb, expr);
-      });
-
-      var decl = JS.VariableDeclaration(mapped);
-
-      if (mode == "expression") {
-        return expr;
-      } else if (mode == "statement") {
-        return [decl];
-      } else if (mode == "return") {
-        return [decl, JS.Return(symb)];
-      }
-    }
-  },
-
-  If: {
-    fields: ['test', 'cons', 'alt'],
-    compile: function (node, mode) {
-      var test = Terr.CompileToJS(node.test, "expression");
-
-      if (mode == "expression") {
-        return JS.ConditionalExpression(test,
-          node.cons ? Terr.CompileToJS(node.cons, "expression") : undefined,
-          node.alt ? Terr.CompileToJS(node.alt, "expression") : JS.Identifier("undefined"))
-      } else if (mode == "statement" || mode == "return") {
-        return [JS.IfStatement(test,
-                  intoBlock(node.cons, mode),
-                  intoBlock(node.alt, mode))]
-      }
-    }
-  },
-
-  Literal: {
-    fields: ['value'],
-    compile: function (node, mode) {
-      return ExpressionToMode(JS.Literal(node.value), mode);
-    }
-  },
-
-  Try: {
-    fields: ['body', 'catch_arg', 'catch', 'finally'],
-    compile: function (node, mode) {
-      if (mode == "expression" || mode == "return") {
-        var sub_mode = "return";
-      } else {
-        var sub_mode = "statement";
-      }
-
-      var tryStatement = JS.TryStatement(
-        JS.Block(Terr.CompileToJS(node.body, sub_mode)),
-        JS.CatchClause(
-          Terr.CompileToJS(node.catch_arg, "expression"),
-          JS.Block(Terr.CompileToJS(node.catch, sub_mode))
-        ),
-        node.finally ? JS.Block(Terr.CompileToJS(node.finally, "statement"))
-                     : undefined
-      )
-
-      if (mode == "statement" || mode == "return") {
-        return [tryStatement];
-      } else {
-        return IIFE([tryStatement]);
-      }
-    }
-  },
-
-  Member: {
-    fields: ['left', 'right'],
-    compile: function (node, mode) {
-      return ExpressionToMode(JS.MemberExpressionComputed(
-        Terr.CompileToJS(node.left, "expression"),
-        Terr.CompileToJS(node.right, "expression")
-      ), mode);
-    }
-  },
-
-  Obj: {
-    fields: ['properties'],
-    compile: function (node, mode) {
-      var props = [];
-      for (var i = 0, len = node.properties.length; i < len; ++i) {
-        var prop = node.properties[i];
-        props.push({
-          type: 'Property',
-          key: JS.Literal(prop.key),
-          value: Terr.CompileToJS(prop.value, "expression"),
-          kind: 'init'
-        });
-      }
-
-      return ExpressionToMode({ type: "ObjectExpression", properties: props }, mode);
-    }
-  },
-
-  Assign: {
-    fields: ['left', 'right'],
-    compile: function (node, mode) {
-      return ExpressionToMode(loc(node, JS.AssignmentExpression(
-        Terr.CompileToJS(node.left, "expression"),
-        "=",
-        Terr.CompileToJS(node.right, "expression")
-      )), mode);
-    }
-  },
-
-  Binary: {
-    fields: ['left', 'op', 'right'],
-    compile: function (node, mode) {
-      return ExpressionToMode(loc(node, JS.BinaryExpression(
-        Terr.CompileToJS(node.left, "expression"),
-        node.op,
-        Terr.CompileToJS(node.right, "expression")
-      )), mode);
-    }
-  },
-
-  Unary: {
-    fields: ['op', 'expr'],
-    compile: function (node, mode) {
-      return ExpressionToMode(loc(node, JS.UnaryExpression(
-        node.op,
-        Terr.CompileToJS(node.expr, "expression")
-      )), mode);
-    }
-  },
-
-  Call: {
-    fields: ['target', 'args'],
-    compile: function (node, mode) {
-      return ExpressionToMode(loc(node, JS.CallExpression(
-        Terr.CompileToJS(node.target, "expression"),
-        node.args.map(function (a) {
-          return Terr.CompileToJS(a, "expression");
-        })
-      )), mode);
-    }
-  },
-
-  Arr: {
-    fields: ['values'],
-    compile: function (node, mode) {
-      return ExpressionToMode(loc(node, JS.ArrayExpression(
-        node.values.map(function (a) {
-          return Terr.CompileToJS(a, "expression");
-        })
-      )), mode);
-    }
-  },
-
-  Return: {
-    fields: ['expression'],
-    compile: function (node, mode) {
-      if (mode == "expression") {
-        throw "Return in expression position? Is this real?"
-      }
-      return [loc(node,
-                  JS.Return(Terr.CompileToJS(node.expression, "expression")))];
-    }
-  },
-
-  New: {
-    fields: ['callee', 'args'],
-    compile: function (node, mode) {
-      return ExpressionToMode(JS.NewExpression(
-        Terr.CompileToJS(node.callee, "expression"),
-        node.args.map(function (a) {
-          return Terr.CompileToJS(a, "expression");
-        })
-      ), mode);
-    }
-  },
-
-  For: {
-    fields: ['init', 'test', 'update', 'body'],
-    compile: function (node, mode) {
-      return StatementToMode(JS.ForStatement(
-        intoBlock(node.init, "statement"),
-        Terr.CompileToJS(node.test, "expression"),
-        Terr.CompileToJS(node.update, "expression"),
-        intoBlock(node.body, "statement")
-      ), mode);
-    }
-  },
-
-  ForIn: {
-    fields: ['left', 'right', 'body'],
-    compile: function (node, mode) {
-      return StatementToMode(JS.ForInStatement(
-        intoBlock(node.left, "statement"),
-        Terr.CompileToJS(node.right, "expression"),
-        intoBlock(node.body, "statement")
-      ), mode);
-    }
-  },
-
-  While: {
-    fields: ['test', 'body'],
-    compile: function (node, mode) {
-      return StatementToMode(JS.WhileStatement(
-        Terr.CompileToJS(node.test, "expression"),
-        intoBlock(node.body, "statement")
-      ), mode);
-    }
-  },
-
-  Loop: {
-    fields: ['label', 'body'],
-    compile: function (node, mode) {
-      var loop_statement = JS.LabeledStatement(
-        Terr.CompileToJS(node.label, "expression"),
-        JS.WhileStatement(
-          JS.Literal(true),
-          intoBlock(node.body, "return")
-        )
-      );
-
-      if (mode == "return") {
-        return [loop_statement];
-      } else if (mode == "statement") {
-        return [JS.ExpressionStatement(IIFE([loop_statement]))];
-      } else if (mode == "expression") {
-        return IIFE([loop_statement]);
-      }
-    }
-  },
-
-  Continue: {
-    fields: ['label'],
-    compile: function (node, mode) {
-      if (mode == "expression") {
-        throw "Continue in expression position? Is this real?"
-      }
-
-      return JS.ContinueStatement(Terr.CompileToJS(node.label, "expression"));
-    }
-  },
-
-  Break: {
-    fields: ['label'],
-    compile: function (node, mode) {
-      if (mode == "expression") {
-        throw "Break in expression position? Is this real?"
-      }
-
-      return JS.BreakStatement(Terr.CompileToJS(node.label, "expression"));
-    }
-  },
-
-  Throw: {
-    fields: ['expression'],
-    compile: function (node, mode) {
-      var statement = JS.ThrowStatement(Terr.CompileToJS(node.expression, "expression"));
-      if (mode == "expression") {
-        return IIFE([statement]);
-      } else {
-        return [statement];
-      }
-    }
-  },
-
-  Splice: {
-    fields: ['value'],
-    compile: function (node, mode) {
-      throw "Cannot compile Splice to JS, should be stripped by parser."
-    }
-  }
-}
-
-function loc (node, js) {
-  if (node.loc) {
-    js.loc = node.loc;
-  }
-  if (node['x-verbatim']) {
-    js['x-verbatim'] = node['x-verbatim'];
-  }
-  return js;
-}
-
-function ExpressionToMode (node, mode) {
-  if (mode == "statement") {
-    return [JS.ExpressionStatement(node)];
-  } else if (mode == "return") {
-    return [JS.Return(node)];
-  }
-  return node;
-}
-
-function StatementToMode (node, mode) {
-  if (node == "expression") {
-    return IIFE([node]);
-  } else if (node == "return") {
-    return [JS.Return(IIFE([node]))];
-  } else {
-    return [node];
-  }
-}
-
-function IIFE (body) {
-  return JS.CallExpression(JS.FunctionExpression([], body), []);
-}
-
-// Reify constructors
-for (var k in compilers) {
-  exports[k] = (function (type, def) {
-    return function () {
-      var args = Array.prototype.slice.call(arguments);
-      var ret = {
-        type: type
-      };
-      for (var i = 0, len = args.length; i < len; ++i) {
-        ret[def[i]] = args[i];
-      }
-      return ret;
-    }
-  }(k, compilers[k].fields))
-}
-
-Terr.CompileToJS = function (ast, mode) {
-  if (ast === undefined) {
-    return ast;
-  } else if (compilers[ast.type]) {
-    return compilers[ast.type].compile(ast, mode);
-  } else {
-    console.trace();
-    console.log(ast);
-    throw "Implement Compiler for " + ast.type;
-  }
-}
-
-},{"./JS":2}],23:[function(require,module,exports){
-function walkProgramTree (handler, node) {
-  function walkTree () {
-    var args = Array.prototype.slice.call(arguments);
-
-    return function selfApp (node) {
-      if (node === undefined) return undefined;
-
-      var new_node, k;
-
-      result = handler.apply(null, [node, walkTree].concat(args))
-      if (result !== false) {
-        return result;
-      }
-
-      if (Array.isArray(node)) {
-        new_node = node.map(selfApp);
-        new_node.type = node.type;
-      } else if (typeof node == 'object') {
-        new_node = {};
-        for (k in node) {
-          new_node[k] = selfApp(node[k]);
-        }
-      } else {
-        new_node = node;
-      }
-
-      return new_node;
-    }
-  }
-
-  var walk_args = Array.prototype.slice.call(arguments, 2);
-
-  return walkTree.apply(null, walk_args)(node);
-}
-
-module.exports = walkProgramTree;
-
-},{}],24:[function(require,module,exports){
+},{"../lib/environment":3}],24:[function(require,module,exports){
 (function(process){if (!process.EventEmitter) process.EventEmitter = function () {};
 
 var EventEmitter = exports.EventEmitter = process.EventEmitter;
@@ -8467,5 +8467,5 @@ process.chdir = function (dir) {
     throw new Error('process.chdir is not supported');
 };
 
-},{}]},{},[21])
+},{}]},{},[23])
 ;

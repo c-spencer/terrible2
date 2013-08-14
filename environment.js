@@ -7,7 +7,7 @@ var parser = require('./parser');
 var core = require('./core');
 var fs = require('fs');
 
-var core_js = fs.readFileSync("./core.js").replace(/exports[^\n]+\n/g, '');
+var core_js = fs.readFileSync("./core.js", 'utf-8').replace(/exports[^\n]+\n/g, '');
 
 function BrowserLoader (root) {
   this.root = root;
@@ -25,6 +25,24 @@ BrowserLoader.prototype.loadPath = function (path) {
   }
 }
 
+function NodeLoader (root) {
+  this.root = root;
+};
+
+NodeLoader.prototype.loadPath = function (path) {
+  try {
+    return fs.readFileSync(this.root + "/" + path);
+  } catch (exc) {
+    return undefined;
+  }
+}
+
+if (typeof window !== "undefined") {
+  var MODULE_LOADER = BrowserLoader;
+} else {
+  var MODULE_LOADER = NodeLoader;
+}
+
 function Environment (target, interactive) {
 
   var id_counter = 0;
@@ -35,7 +53,7 @@ function Environment (target, interactive) {
     return root + "_$" + (++id_counter);
   }
 
-  this.loader = new BrowserLoader("src");
+  this.loader = new MODULE_LOADER("src");
 
   this.readSession = (new reader.Reader(this.genID)).newReadSession();
 
@@ -50,7 +68,19 @@ function Environment (target, interactive) {
 
   this.namespaces = [];
 
-  this.current_namespace = this.getNamespace('user', true);
+  this.loadNamespace('user', true);
+};
+
+Environment.prototype.runMethod = function (name, args) {
+  var fn = this.current_namespace.scope.resolve(parser.mungeSymbol(name));
+  if (!fn) {
+    throw "No such method " + this.current_namespace.name + "/" + name
+  }
+  return fn.value.apply(null, args);
+};
+
+Environment.prototype.loadNamespace = function (name, create) {
+  this.current_namespace = this.getNamespace(name, create);
 };
 
 Environment.prototype.findNamespace = function (name) {
@@ -162,7 +192,7 @@ Environment.prototype.evalText = function (session, text, error_cb) {
   return results;
 };
 
-Environment.prototype.asJS = function (mode) {
+Environment.prototype.asJS = function (mode, entry_fn) {
   var raw_core = Terr.Call(
     Terr.Identifier('eval'),
     [Terr.Literal(core_js)]
@@ -188,6 +218,14 @@ Environment.prototype.asJS = function (mode) {
           entry.value
         ));
       }
+    }
+  } else {
+    if (entry_fn) {
+      var fn = this.current_namespace.scope.resolve(parser.mungeSymbol(entry_fn));
+      if (!fn) {
+        throw "Couldn't resolve entry point " + this.current_namespace.name + "/" + entry_fn;
+      }
+      seq.values.push(Terr.Call(fn.accessor, []));
     }
   }
 

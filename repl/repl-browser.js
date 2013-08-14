@@ -26,6 +26,24 @@ BrowserLoader.prototype.loadPath = function (path) {
   }
 }
 
+function NodeLoader (root) {
+  this.root = root;
+};
+
+NodeLoader.prototype.loadPath = function (path) {
+  try {
+    return fs.readFileSync(this.root + "/" + path);
+  } catch (exc) {
+    return undefined;
+  }
+}
+
+if (typeof window !== "undefined") {
+  var MODULE_LOADER = BrowserLoader;
+} else {
+  var MODULE_LOADER = NodeLoader;
+}
+
 function Environment (target, interactive) {
 
   var id_counter = 0;
@@ -36,7 +54,7 @@ function Environment (target, interactive) {
     return root + "_$" + (++id_counter);
   }
 
-  this.loader = new BrowserLoader("src");
+  this.loader = new MODULE_LOADER("src");
 
   this.readSession = (new reader.Reader(this.genID)).newReadSession();
 
@@ -51,7 +69,19 @@ function Environment (target, interactive) {
 
   this.namespaces = [];
 
-  this.current_namespace = this.getNamespace('user', true);
+  this.loadNamespace('user', true);
+};
+
+Environment.prototype.runMethod = function (name, args) {
+  var fn = this.current_namespace.scope.resolve(parser.mungeSymbol(name));
+  if (!fn) {
+    throw "No such method " + this.current_namespace.name + "/" + name
+  }
+  return fn.value.apply(null, args);
+};
+
+Environment.prototype.loadNamespace = function (name, create) {
+  this.current_namespace = this.getNamespace(name, create);
 };
 
 Environment.prototype.findNamespace = function (name) {
@@ -163,7 +193,7 @@ Environment.prototype.evalText = function (session, text, error_cb) {
   return results;
 };
 
-Environment.prototype.asJS = function (mode) {
+Environment.prototype.asJS = function (mode, entry_fn) {
   var raw_core = Terr.Call(
     Terr.Identifier('eval'),
     [Terr.Literal(core_js)]
@@ -189,6 +219,14 @@ Environment.prototype.asJS = function (mode) {
           entry.value
         ));
       }
+    }
+  } else {
+    if (entry_fn) {
+      var fn = this.current_namespace.scope.resolve(parser.mungeSymbol(entry_fn));
+      if (!fn) {
+        throw "Couldn't resolve entry point " + this.current_namespace.name + "/" + entry_fn;
+      }
+      seq.values.push(Terr.Call(fn.accessor, []));
     }
   }
 
@@ -6563,12 +6601,9 @@ argReader = function (buffer, percent) {
     return registerArg(this, 1);
   } else if (ch == ".") {
     var root = registerArg(this, 1);
-    buffer.read1(); // throw away
-
     var symb = this.read(buffer);
-    symb.parts.unshift(root.name());
 
-    return symb;
+    return new core.symbol(root.name + symb.name);
   } else if (this.isDigit(ch)) {
 
     var n = buffer.read1();
@@ -6588,10 +6623,8 @@ argReader = function (buffer, percent) {
     var root = registerArg(this, n);
 
     if (buffer.lookahead(1) == ".") {
-      buffer.read1();
       var symb = this.read(buffer);
-      symb.parts.unshift(root.name());
-      return symb;
+      return new core.symbol(root.name + symb.name);
     } else {
       return root;
     }
@@ -6664,6 +6697,17 @@ fnReader = function (buffer, openparen) {
   }
 }
 
+keywordFunctionReader = function (buffer, colon) {
+  var kw = this.readToken(buffer, colon);
+
+  if (kw instanceof core.keyword) {
+    return new core.list([new core.symbol('lambda'), [new core.symbol('o')],
+                          new core.symbol('o.' + kw.name)]);
+  } else {
+    throw "Invalid keywordFunction form " + kw;
+  }
+}
+
 function Reader (id_generator) {
   this.genID = id_generator;
 }
@@ -6688,7 +6732,8 @@ Reader.prototype.macros = {
 
 Reader.prototype.dispatch_macros = {
   '(': fnReader,
-  '/': regexReader
+  '/': regexReader,
+  ':': keywordFunctionReader
 }
 
 Reader.prototype.isWhitespace = function (str) { return str.match(/[\t\r\n,\s]/); }

@@ -48,3 +48,9 @@ function Keyword (name) {
   this.name = name;
 }
 exports.keyword = Keyword;
+
+var gensym_counter = 0;
+function gensym (root) {
+  return new Symbol("gensym$" + root + "$" + (++gensym_counter));
+}
+exports.gensym = gensym;

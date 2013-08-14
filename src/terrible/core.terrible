@@ -187,7 +187,7 @@
     (if (symbol? arg)
       (formal-args.push arg)
       (do
-        (var new-symb (symbol (+ "arg_" i "#")))
+        (var new-symb (gensym "arg"))
         (formal-args.push new-symb)
         (destructure-pairs.push `(destructure ~arg ~new-symb))))))
 
@@ -286,10 +286,8 @@
          v (get bindings (+ i 1)))
     (if (symbol? s)
       (vars.push `(var ~s ~v))
-      (do
-        (var new-symb (symbol (+ "let_" i "#")))
-        (vars.push `(var ~new-symb ~v))
-        (vars.push `(destructure ~s ~new-symb)))))
+      (vars.push `(do-noscope (var let# ~v)
+                              (destructure ~s let#)))))
   `(do ~@vars ~@body))
 
 (defmacro loop [bindings & body]

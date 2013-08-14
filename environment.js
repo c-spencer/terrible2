@@ -29,6 +29,7 @@ function Environment (target, interactive) {
   this.scope.expose('List', core.list);
   this.scope.expose('Symbol', core.symbol);
   this.scope.expose('Keyword', core.keyword);
+  this.scope.expose('gensym', core.gensym);
 
   this.namespaces = [];
 

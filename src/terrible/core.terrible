@@ -128,10 +128,16 @@
 (terr-macro throw [opts arg]
   (opts.Terr.Throw ((opts.walker opts.env) arg)))
 
+(terr-macro get [opts target arg]
+  (var walker (opts.walker opts.env))
+  (opts.Terr.Member (walker target) (walker arg)))
+
 (terr-macro loop-body [opts & body]
-  (var loop-id (opts.Terr.Identifier "loop"))
+  (var previous-id opts.env.scope.js_frame.$loop
+       loop-id (opts.Terr.Identifier (get (gensym "loop") "name")))
   (set! opts.env.scope.js_frame.$loop loop-id)
   (var mapped-body (body.map (opts.walker opts.env)))
+  (set! opts.env.scope.js_frame.$loop previous-id)
   (if loop-id.$referenced
     (opts.Terr.Loop loop-id (opts.Terr.Seq mapped-body))
     (opts.Terr.Seq mapped-body)))
@@ -142,10 +148,6 @@
         (opts.Terr.Seq [((opts.walker opts.env) `(set! ~@args))
                         (opts.Terr.Continue opts.env.scope.js_frame.$loop)]))
     (throw "Must call recur from a loop-body context.")))
-
-(terr-macro get [opts target arg]
-  (var walker (opts.walker opts.env))
-  (opts.Terr.Member (walker target) (walker arg)))
 
 (def ^:macro cond
   (lambda [t v & cases]

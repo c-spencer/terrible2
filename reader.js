@@ -287,12 +287,9 @@ argReader = function (buffer, percent) {
     return registerArg(this, 1);
   } else if (ch == ".") {
     var root = registerArg(this, 1);
-    buffer.read1(); // throw away
-
     var symb = this.read(buffer);
-    symb.parts.unshift(root.name());
 
-    return symb;
+    return new core.symbol(root.name + symb.name);
   } else if (this.isDigit(ch)) {
 
     var n = buffer.read1();
@@ -312,10 +309,8 @@ argReader = function (buffer, percent) {
     var root = registerArg(this, n);
 
     if (buffer.lookahead(1) == ".") {
-      buffer.read1();
       var symb = this.read(buffer);
-      symb.parts.unshift(root.name());
-      return symb;
+      return new core.symbol(root.name + symb.name);
     } else {
       return root;
     }

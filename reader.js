@@ -383,6 +383,17 @@ fnReader = function (buffer, openparen) {
   }
 }
 
+keywordFunctionReader = function (buffer, colon) {
+  var kw = this.readToken(buffer, colon);
+
+  if (kw instanceof core.keyword) {
+    return new core.list([new core.symbol('lambda'), [new core.symbol('o')],
+                          new core.symbol('o.' + kw.name)]);
+  } else {
+    throw "Invalid keywordFunction form " + kw;
+  }
+}
+
 function Reader (id_generator) {
   this.genID = id_generator;
 }
@@ -407,7 +418,8 @@ Reader.prototype.macros = {
 
 Reader.prototype.dispatch_macros = {
   '(': fnReader,
-  '/': regexReader
+  '/': regexReader,
+  ':': keywordFunctionReader
 }
 
 Reader.prototype.isWhitespace = function (str) { return str.match(/[\t\r\n,\s]/); }

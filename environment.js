@@ -14,6 +14,21 @@ var known_namespaces = {
   "terrible.core.extras": fs.readFileSync("./src/terrible/core/extras.terrible")
 };
 
+function BrowserLoader (root) {
+  this.root = root;
+};
+
+BrowserLoader.prototype.loadPath = function (path) {
+  var request = new XMLHttpRequest();
+  request.open('GET', this.root + "/" + path, false);
+  request.send(null);
+
+  if (request.status == 200) {
+    return request.responseText;
+  } else {
+    return null;
+  }
+}
 
 function Environment (target, interactive) {
 
@@ -24,6 +39,8 @@ function Environment (target, interactive) {
   this.genID = function (root) {
     return root + "_$" + (++id_counter);
   }
+
+  this.loader = new BrowserLoader("src");
 
   this.readSession = (new reader.Reader(this.genID)).newReadSession();
 
@@ -52,12 +69,13 @@ Environment.prototype.findNamespace = function (name) {
       return this.namespaces[i];
     }
   }
-  if (known_namespaces[name]) {
+  var loaded = this.loader.loadPath(name.replace(/\./g, '/') + ".terrible");
+  if (loaded) {
     var ns = this.createNamespace(name);
 
     var prev_ns = this.current_namespace;
     this.current_namespace = ns;
-    this.evalText(known_namespaces[name]);
+    this.evalText(loaded);
     this.current_namespace = prev_ns;
     return ns;
   }

@@ -15,6 +15,21 @@ var known_namespaces = {
   "terrible.core.extras": "(ns terrible.core.extras)\n\n(defprotocol Equality\n  (= [left right]\n    (== left right)))\n\n; Avoid extra dispatch for not=\n(defn not= [left right]\n  (not (= left right)))\n\n(extend-type Keyword Equality\n  (= [left right]\n    (and (keyword? right)\n         (== left.name right.name))))\n\n(extend-type Symbol Equality\n  (= [left right]\n    (and (symbol? right)\n         (== left.name right.name))))\n\n(defprotocol Iterable\n  (map [obj func]\n    (let [new-obj {}]\n      (js-for-in k obj\n        (if (obj.hasOwnProperty k)\n          (set! (get new-obj k) (func (get obj k) k))))\n      new-obj))\n  (each [obj func]\n    (js-for-in k obj\n      (if (obj.hasOwnProperty k)\n        (func (get obj k) k)))\n    nil))\n\n(extend-type Array Iterable\n  (map [arr func] (arr.map func))\n  (each [arr func] (arr.forEach func)))\n\n(extend-type List Iterable\n  (map [this-list func] (.concat (list) (this-list.values.map func)))\n  (each [this-list func] (this-list.values.forEach func)))\n\n(defprotocol Printable\n  (print-str [obj]\n    (cond\n      (object? obj) (let [parts []]\n                      (each obj (fn [v k]\n                        (parts.push (print-str k))\n                        (parts.push (print-str v))))\n                      (+ \"{\" (parts.join \" \") \"}\"))\n      :else         (JSON.stringify obj))))\n\n(extend-type Array Printable\n  (print-str [arr]\n    (+ \"[\" (.join (map arr print-str) \" \") \"]\")))\n\n(extend-type List Printable\n  (print-str [list]\n    (+ \"(\" (.values.join (map list print-str) \" \") \")\")))\n\n(extend-type Keyword Printable\n  (print-str [kw]\n    (+ \":\" kw.name)))\n\n(extend-type Symbol Printable\n  (print-str [symb] symb.name))\n\n(extend-type Function Printable\n  (print-str [f]\n    (+ \"#fn[\" f.name \"]\")))\n"
 };
 
+function BrowserLoader (root) {
+  this.root = root;
+};
+
+BrowserLoader.prototype.loadPath = function (path) {
+  var request = new XMLHttpRequest();
+  request.open('GET', this.root + "/" + path, false);
+  request.send(null);
+
+  if (request.status == 200) {
+    return request.responseText;
+  } else {
+    return null;
+  }
+}
 
 function Environment (target, interactive) {
 
@@ -25,6 +40,8 @@ function Environment (target, interactive) {
   this.genID = function (root) {
     return root + "_$" + (++id_counter);
   }
+
+  this.loader = new BrowserLoader("src");
 
   this.readSession = (new reader.Reader(this.genID)).newReadSession();
 
@@ -53,12 +70,13 @@ Environment.prototype.findNamespace = function (name) {
       return this.namespaces[i];
     }
   }
-  if (known_namespaces[name]) {
+  var loaded = this.loader.loadPath(name.replace(/\./g, '/') + ".terrible");
+  if (loaded) {
     var ns = this.createNamespace(name);
 
     var prev_ns = this.current_namespace;
     this.current_namespace = ns;
-    this.evalText(known_namespaces[name]);
+    this.evalText(loaded);
     this.current_namespace = prev_ns;
     return ns;
   }

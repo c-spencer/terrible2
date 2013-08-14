@@ -7,9 +7,13 @@ var parser = require('./parser');
 var core = require('./core');
 var fs = require('fs');
 
-var terrible_core = fs.readFileSync("./src/terrible/core.terrible");
-var terrible_core_extras = fs.readFileSync("./src/terrible/core/extras.terrible");
 var core_js = fs.readFileSync("./core.js").replace(/exports[^\n]+\n/g, '');
+
+var known_namespaces = {
+  "terrible.core": fs.readFileSync("./src/terrible/core.terrible"),
+  "terrible.core.extras": fs.readFileSync("./src/terrible/core/extras.terrible")
+};
+
 
 function Environment (target, interactive) {
 
@@ -34,17 +38,12 @@ function Environment (target, interactive) {
 
   this.namespaces = [];
 
-  this.current_namespace = this.getNamespace('terrible.core');
-  this.evalText(terrible_core);
-
-  this.current_namespace = this.getNamespace('user');
+  this.current_namespace = this.getNamespace('user', true);
 };
 
 Environment.prototype.loadExtras = function () {
-  var ns = this.current_namespace;
-  this.current_namespace = this.getNamespace('terrible.core.extras');
-  this.evalText(terrible_core_extras);
-  this.current_namespace = ns;
+  this.current_namespace.scope.refer('terrible.core.extras', null,
+    this.findNamespace('terrible.core.extras'));
 }
 
 Environment.prototype.findNamespace = function (name) {
@@ -53,19 +52,35 @@ Environment.prototype.findNamespace = function (name) {
       return this.namespaces[i];
     }
   }
+  if (known_namespaces[name]) {
+    var ns = this.createNamespace(name);
+
+    var prev_ns = this.current_namespace;
+    this.current_namespace = ns;
+    this.evalText(known_namespaces[name]);
+    this.current_namespace = prev_ns;
+    return ns;
+  }
 };
 
-Environment.prototype.getNamespace = function (name) {
+Environment.prototype.createNamespace = function (name) {
+  var ns = new Namespace.Namespace(name, this.scope.newScope(true, false));
+  this.namespaces.push(ns);
+
+  if (name != "terrible.core") {
+    ns.scope.refer("terrible.core", null, this.findNamespace("terrible.core"));
+  };
+  return ns;
+};
+
+Environment.prototype.getNamespace = function (name, create) {
   var ns = this.findNamespace(name);
   if (ns) {
     return ns;
+  } else if (create) {
+    return this.createNamespace(name);
   } else {
-    var ns = new Namespace.Namespace(name, this.scope.newScope(true, false));
-    if (name != "terrible.core") {
-      ns.scope.refer("terrible.core", null, this.findNamespace("terrible.core"))
-    }
-    this.namespaces.push(ns);
-    return ns;
+    throw "Couldn't getNamespace " + name;
   }
 };
 

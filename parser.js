@@ -218,7 +218,7 @@ builtins = {
   },
 
   "ns": function (opts, ns) {
-    opts.env.env.current_namespace = opts.env.env.getNamespace(ns.name);
+    opts.env.env.current_namespace = opts.env.env.getNamespace(ns.name, true);
 
     return Terr.Seq([]);
   },

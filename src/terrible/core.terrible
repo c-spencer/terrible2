@@ -2,8 +2,7 @@
 
 ; Required bindings assumed by macros
 
-; needed early for var args
-(var ^:external Array)
+(var ^:external Array) ; needed early for var args
 
 (var ^{:terr-macro true :private false} new
   (lambda [opts callee & args]
@@ -36,42 +35,31 @@
   (lambda [opts arg]
     ((opts.walker (opts.env.setQuoted false)) arg)))
 
-(def ^:macro fn
-  (lambda [& body]
-    `(lambda ~@body)))
-
-(def ^:macro defmacro
-  (fn [name & body]
-    (var macro-name (symbol name.name))
-    (set! macro-name.$metadata {:macro true})
-    `(def ~macro-name (fn ~@body))))
-
-(defmacro extern [& symbs]
-  (symbs.forEach (fn [s] (set! s.$metadata {:external true})))
-  `(var ~@symbs))
-
-; Grab some core JavaScript objects
-(extern Function Object Number String JSON console)
+; terr-macros bootstrapping
 
 (def ^:macro terr-macro
-  (fn [name & body]
+  (lambda [name & body]
     (var macro-name (symbol name.name))
     (set! macro-name.$metadata {:terr-macro true})
-    `(def ~macro-name (fn ~@body))))
+    `(def ~macro-name (lambda ~@body))))
 
-; Useful utilities
+(var ^:macro defmacro-lambda
+  (lambda [name & body]
+    (var macro-name (symbol name.name))
+    (set! macro-name.$metadata {:macro true})
+    `(var ~macro-name (lambda ~@body))))
 
-(defmacro defn [name & body]
-  `(def ~name (fn ~@body)))
+(defmacro-lambda deflambda [name & body]
+  `(def ~name (lambda ~@body)))
 
 ; js operators
 
-(defmacro binary-operator [symb op]
+(defmacro-lambda binary-operator [symb op]
   `(terr-macro ~symb [opts# ~'& args#]
     (~'.reduce (args#.map (opts#.walker opts#.env))
-      (fn [left# right#] (opts#.Terr.Binary left# ~op right#)))))
+      (lambda [left# right#] (opts#.Terr.Binary left# ~op right#)))))
 
-(defmacro unary-operator [symb op]
+(defmacro-lambda unary-operator [symb op]
   `(terr-macro ~symb [opts# arg#]
     (opts#.Terr.Unary ~op ((opts#.walker opts#.env) arg#))))
 
@@ -97,29 +85,29 @@
 
 ; Type checks
 
-(defn list? [l]
+(deflambda list? [l]
   (instance? l List))
 
-(defn symbol? [s]
+(deflambda symbol? [s]
   (instance? s Symbol))
 
-(defn keyword? [k]
+(deflambda keyword? [k]
   (instance? k Keyword))
 
-(defn string? [s]
+(deflambda string? [s]
   (== (type s) "string"))
 
-(defn number? [s]
+(deflambda number? [s]
   (== (type s) "number"))
 
-(defn object? [o]
+(deflambda object? [o]
   (and (not== nil o)
        (== (type o) "object")))
 
-(defn vector? [v]
+(deflambda vector? [v]
   (Array.isArray v))
 
-; Core terr macros
+; fn bootstrapping
 
 (terr-macro if [opts test cons alt]
   (var walker (opts.walker opts.env))
@@ -130,6 +118,49 @@
 (terr-macro do [opts & body]
   (var walker (opts.walker (opts.env.newScope true false)))
   (opts.Terr.Seq (body.map walker)))
+
+(terr-macro throw [opts arg]
+  (opts.Terr.Throw ((opts.walker opts.env) arg)))
+
+(terr-macro loop-body [opts & body]
+  (var loop-id (opts.Terr.Identifier "loop"))
+  (set! opts.env.scope.js_frame.$loop loop-id)
+  (var mapped-body (body.map (opts.walker opts.env)))
+  (if loop-id.$referenced
+    (opts.Terr.Loop loop-id (opts.Terr.Seq mapped-body))
+    (opts.Terr.Seq mapped-body)))
+
+(terr-macro recur [opts & args]
+  (if opts.env.scope.js_frame.$loop
+    (do (set! opts.env.scope.js_frame.$loop.$referenced true)
+        (opts.Terr.Seq [((opts.walker opts.env) `(set! ~@args))
+                        (opts.Terr.Continue opts.env.scope.js_frame.$loop)]))
+    (throw "Must call recur from a loop-body context.")))
+
+(def ^:macro fn
+  (lambda [& body]
+    (var extract (lambda [v] `[~v.0 (loop-body ~@(v.slice 1))]))
+    (if (list? body.0)
+      `(lambda ~@(body.map (lambda [v] `(~@(extract v.values)))))
+      `(lambda ~@(extract body)))))
+
+(def ^:macro defmacro
+  (fn [name & body]
+    (var macro-name (symbol name.name))
+    (set! macro-name.$metadata {:macro true})
+    `(def ~macro-name (fn ~@body))))
+
+(defmacro defn [name & body]
+  `(def ~name (fn ~@body)))
+
+(defmacro extern [& symbs]
+  (symbs.forEach (fn [s] (set! s.$metadata {:external true})))
+  `(var ~@symbs))
+
+; Grab some core JavaScript objects
+(extern Function Object Number String JSON console)
+
+; Core terr macros
 
 ; As do, but no new scope.
 ; stop-gap until public vars can jump up scopes
@@ -143,9 +174,6 @@
 
 (terr-macro return [opts arg]
   (opts.Terr.Return ((opts.walker opts.env) arg)))
-
-(terr-macro throw [opts arg]
-  (opts.Terr.Throw ((opts.walker opts.env) arg)))
 
 ; Refer a namespace into scope
 (terr-macro refer [opts symb alias]
@@ -215,6 +243,9 @@
          v (get bindings (+ i 1)))
     (vars.push `(var ~s ~v)))
   `(do ~@vars ~@body))
+
+(defmacro loop [bindings & body]
+  `(let ~bindings (loop-body ~@body)))
 
 (defmacro -> [left app & apps]
   (cond
@@ -348,38 +379,3 @@
     (opts.Terr.Seq (body.map (walker env)))
     (opts.Terr.Identifier munged-name)
     (opts.Terr.Seq (catch-body.map (walker catch-env)))))
-
-; loop-recur scratchings
-
-(terr-macro loop-body [opts & body]
-  (let [loop-id (opts.Terr.Identifier "loop")]
-    (set! opts.env.scope.js_frame.$loop loop-id)
-    (let [mapped-body (body.map (opts.walker opts.env))]
-      (if loop-id.$referenced
-        (opts.Terr.Loop loop-id (opts.Terr.Seq mapped-body))
-        (opts.Terr.Seq mapped-body)))))
-
-(terr-macro recur [opts & args]
-  (let [walker (opts.walker opts.env)
-        assign (walker `(set! ~@args))]
-    (set! opts.env.scope.js_frame.$loop.$referenced true)
-    (opts.Terr.Seq [assign (opts.Terr.Continue opts.env.scope.js_frame.$loop)])))
-
-(defmacro loop [bindings & body]
-  `(let ~bindings (loop-body ~@body)))
-
-; (loop [i 0]
-;   (if (< i 10)
-;     (do
-;       (print i)
-;       (recur i (+ i 1)))
-;     i))
-
-; (defn range [vec from to]
-;   (loop-body
-;     (cond
-;       (< from to) (recur vec (vec.concat from) from (+ from 1))
-;       (> from to) (recur vec (vec.concat from) from (- from 1))
-;       (== from to) (vec.concat from))))
-
-; (print (range [] 10 50))

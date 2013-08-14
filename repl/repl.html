@@ -158,6 +158,13 @@
       (print i)
       (recur i (+ i 1)))
     i))
+
+(defn range [vec from to]
+  (vec.push from)
+  (cond
+    (< from to) (recur from (+ from 1))
+    (> from to) (recur from (- from 1))
+    (== from to) vec))
 </textarea>
       <textarea class="panel input right" id="terrible-output"></textarea>
       <div class="panel compiler-options">

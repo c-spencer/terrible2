@@ -4,7 +4,6 @@ connect.createServer(
   connect.static(__dirname + "/repl/", { index: 'repl.html' }),
   function (req, res, next) {
     if (req.url.match(/^\/src/)) {
-      console.log('src_server');
       return src_server(req, res, next);
     } else {
       return next();

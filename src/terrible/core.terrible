@@ -372,22 +372,19 @@
 
 (def ^:reader-macro reader-/
   (fn [reader buffer]
-    (var str ""
-         flags "")
-    (loop [ch (buffer.read1)
+    (loop [str ""
+           flags ""
+           ch (buffer.read1)
            flag_regex (new RegExp "^[gimy]$")]
-      (if (not ch)
-        (new RegExp str flags)
-        (if (== ch "/")
-          (do
-            (loop [ch (buffer.read1)]
-              (when (.match ch flag_regex) (recur flags (+ flags ch)
-                                                  ch (buffer.read1))))
-            (buffer.unread ch)
-            (new RegExp str flags))
-          (do
-            (when (== ch "\\")
-              (set! str (+ str ch)
-                    ch (buffer.read1)))
-            (recur str (+ str ch)
-                   ch (buffer.read1))))))))
+      (cond
+        (not ch)      (new RegExp str flags)
+        (== ch "/")   (do
+                        (loop [ch (buffer.read1)]
+                          (when (.match ch flag_regex) (recur flags (+ flags ch)
+                                                              ch (buffer.read1))))
+                        (buffer.unread ch)
+                        (recur ch nil))
+        (== ch "\\")  (recur str (+ str ch (buffer.read1))
+                             ch (buffer.read1))
+        :else         (recur str (+ str ch)
+                             ch (buffer.read1))))))

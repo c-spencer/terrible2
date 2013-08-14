@@ -5,8 +5,9 @@ var Environment = require('../Environment').Environment;
 var target = "browser";
 var mode = "library";
 var interactive = false;
-var minify = false;
+var minify = true;
 var compile_timeout = null;
+var extras = false;
 
 function compileTerrible(text, callback) {
   if (compile_timeout) {
@@ -19,6 +20,11 @@ function compileTerrible(text, callback) {
 
 function compileTerrible_(text) {
   var env = new Environment(target, interactive);
+
+  if (extras) {
+    env.loadExtras();
+  }
+
   var messages = [];
   env.scope.expose('print', function (v) {
     // Somewhat messy reach-in
@@ -26,6 +32,8 @@ function compileTerrible_(text) {
     var printer = scope.resolve('print_str');
     if (printer && printer.value) {
       messages.push("> " + printer.value(v));
+    } else {
+      messages.push("> " + JSON.stringify(v));
     }
   });
 
@@ -91,10 +99,10 @@ document.getElementById('environment-mode').addEventListener('change',
   }
 );
 
-document.getElementById('environment-interactive').addEventListener('change',
+document.getElementById('environment-extras').addEventListener('change',
   function () {
-    var el = document.getElementById('environment-interactive');
-    interactive = el.checked;
+    var el = document.getElementById('environment-extras');
+    extras = el.checked;
     doCompile(true);
   }
 );

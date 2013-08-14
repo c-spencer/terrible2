@@ -5,23 +5,28 @@
 // Literals == Number / String
 
 function List(values) {
+  var that = this;
   this.values = values;
-}
-List.prototype.concat = function (arg) {
-  this.values = this.values.concat(arg);
-  return this;
-}
-List.prototype.push = function () {
-  this.values.push.apply(this.values, arguments);
-  return this;
+
+  this.concat = function (arg) {
+    that.values = that.values.concat(arg);
+    return that;
+  };
+
+  this.push = function () {
+    that.values.push.apply(that.values, arguments);
+    return that;
+  };
 }
 exports.list = List;
 
 function Symbol(name) {
   this.name = name;
+
+  this.parse = function () { return Symbol_parse(name); };
 }
-Symbol.prototype.parse = function () {
-  var name = this.name,
+var Symbol_parse = function (symbol_name) {
+  var name = symbol_name,
       ns = "",
       root = "",
       parts = [],

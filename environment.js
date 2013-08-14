@@ -8,6 +8,7 @@ var core = require('./core');
 var fs = require('fs');
 
 var terrible_core = fs.readFileSync("./src/terrible/core.terrible");
+var terrible_core_extras = fs.readFileSync("./src/terrible/core/extras.terrible");
 var core_js = fs.readFileSync("./core.js").replace(/exports[^\n]+\n/g, '');
 
 function Environment (target, interactive) {
@@ -34,11 +35,17 @@ function Environment (target, interactive) {
   this.namespaces = [];
 
   this.current_namespace = this.getNamespace('terrible.core');
-
   this.evalText(terrible_core);
 
   this.current_namespace = this.getNamespace('user');
 };
+
+Environment.prototype.loadExtras = function () {
+  var ns = this.current_namespace;
+  this.current_namespace = this.getNamespace('terrible.core.extras');
+  this.evalText(terrible_core_extras);
+  this.current_namespace = ns;
+}
 
 Environment.prototype.findNamespace = function (name) {
   for (var i = 0; i < this.namespaces.length; ++i) {

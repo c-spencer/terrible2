@@ -175,8 +175,8 @@ Environment.prototype.evalText = function (session, text, error_cb) {
       }
     }
 
-  }, function (reader, token, buffer) {
-    var resolved = that.current_namespace.scope.resolve(parser.mungeSymbol(token.name));
+  }, function (reader, name, buffer) {
+    var resolved = that.current_namespace.scope.resolve(parser.mungeSymbol('reader-'+name));
     if (resolved && resolved.metadata['reader-macro']) {
       try {
         return resolved.value(reader, buffer);

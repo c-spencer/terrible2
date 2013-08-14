@@ -221,7 +221,7 @@
   `(var ~@symbs))
 
 ; Grab some core JavaScript objects
-(extern Function Object Number String JSON console)
+(extern Function Object Number String RegExp JSON console)
 
 ; Core terr macros
 
@@ -360,3 +360,34 @@
     (opts.Terr.Seq (body.map (walker env)))
     (opts.Terr.Identifier munged-name)
     (opts.Terr.Seq (catch-body.map (walker catch-env)))))
+
+; Helper reader macros
+
+; keyword function reader
+(def ^:reader-macro reader-:
+  (fn [reader buffer]
+    (var kw (reader.readToken buffer ":")
+         s  (symbol "o"))
+    `(fn [~s] (get ~s ~kw.name))))
+
+(def ^:reader-macro reader-/
+  (fn [reader buffer]
+    (var str ""
+         flags "")
+    (loop [ch (buffer.read1)
+           flag_regex (new RegExp "^[gimy]$")]
+      (if (not ch)
+        (new RegExp str flags)
+        (if (== ch "/")
+          (do
+            (loop [ch (buffer.read1)]
+              (when (.match ch flag_regex) (recur flags (+ flags ch)
+                                                  ch (buffer.read1))))
+            (buffer.unread ch)
+            (new RegExp str flags))
+          (do
+            (when (== ch "\\")
+              (set! str (+ str ch)
+                    ch (buffer.read1)))
+            (recur str (+ str ch)
+                   ch (buffer.read1))))))))

@@ -213,36 +213,13 @@ function stringReader (buffer, quote) {
   return str;
 }
 
-function regexReader (buffer, slash) {
-  var str = "", flags = "", ch;
-
-  while (ch = buffer.read1()) {
-    if (ch == '/') {
-      while ((ch = buffer.read1()).match(/^[gimy]$/)) {
-        flags += ch;
-      }
-      buffer.unread(ch);
-      break;
-    }
-
-    if (ch == "\\") {
-      str += ch;
-      ch = buffer.read1();
-    }
-
-    str += ch;
-  }
-
-  return RegExp(str, flags);
-}
-
 dispatchReader = function (buffer, hash) {
   var ch = buffer.read1();
   if (this.dispatch_macros[ch]) {
     return this.dispatch_macros[ch].call(this, buffer, ch);
   } else {
     if (buffer.dispatch_handler) {
-      return buffer.dispatch_handler(this, this.readToken(buffer, ch), buffer);
+      return buffer.dispatch_handler(this, ch, buffer);
     } else {
       throw "dispatch on symbol but no Buffer dispatch_handler"
     }
@@ -383,17 +360,6 @@ fnReader = function (buffer, openparen) {
   }
 }
 
-keywordFunctionReader = function (buffer, colon) {
-  var kw = this.readToken(buffer, colon);
-
-  if (kw instanceof core.keyword) {
-    return new core.list([new core.symbol('lambda'), [new core.symbol('o')],
-                          new core.symbol('o.' + kw.name)]);
-  } else {
-    throw "Invalid keywordFunction form " + kw;
-  }
-}
-
 function Reader (id_generator) {
   this.genID = id_generator;
 }
@@ -417,9 +383,7 @@ Reader.prototype.macros = {
 }
 
 Reader.prototype.dispatch_macros = {
-  '(': fnReader,
-  '/': regexReader,
-  ':': keywordFunctionReader
+  '(': fnReader
 }
 
 Reader.prototype.isWhitespace = function (str) { return str.match(/[\t\r\n,\s]/); }

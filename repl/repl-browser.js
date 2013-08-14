@@ -8,7 +8,7 @@ var parser = require('./parser');
 var core = require('./core');
 var fs = require('fs');
 
-var core_js = "// Core Structures\n\n// Vector == Array\n// Map == Object\n// Literals == Number / String\n\nfunction List(values) {\n  var that = this;\n  this.values = values;\n\n  this.concat = function (arg) {\n    that.values = that.values.concat(arg);\n    return that;\n  };\n\n  this.push = function () {\n    that.values.push.apply(that.values, arguments);\n    return that;\n  };\n}\nexports.list = List;\n\nfunction Symbol(name) {\n  this.name = name;\n\n  this.parse = function () { return Symbol_parse(name); };\n}\nvar Symbol_parse = function (symbol_name) {\n  var name = symbol_name,\n      ns = \"\",\n      root = \"\",\n      parts = [],\n      ns_parts = name.split(/\\//);\n\n  if (ns_parts.length > 1 && ns_parts[0] !== \"\") {\n    ns = ns_parts[0];\n    name = ns_parts.slice(1).join(\"\");\n  }\n\n  if (name.match(/^\\.+$/)) {\n    root = name;\n  } else {\n    var name_parts = name.split(/\\./);\n    root = name_parts[0];\n    parts = name_parts.slice(1);\n  }\n\n  return { namespace: ns, root: root, parts: parts };\n};\nexports.symbol = Symbol;\n\nfunction Keyword (name) {\n  this.name = name;\n}\nexports.keyword = Keyword;\n\nvar gensym_counter = 0;\nfunction gensym (root) {\n  return new Symbol(\"gensym$\" + root + \"$\" + (++gensym_counter));\n}\nexports.gensym = gensym;\n".replace(/exports[^\n]+\n/g, '');
+var core_js = "// Core Structures\n\n// Vector == Array\n// Map == Object\n// Literals == Number / String\n\nfunction List(values) {\n  var that = this;\n  this.values = values;\n\n  this.concat = function (arg) {\n    that.values = that.values.concat(arg);\n    return that;\n  };\n\n  this.push = function () {\n    that.values.push.apply(that.values, arguments);\n    return that;\n  };\n}\nexports.list = List;\n\nfunction Symbol(name) {\n  this.name = name;\n\n  this.parse = function () { return Symbol_parse(name); };\n}\nvar Symbol_parse = function (symbol_name) {\n  var name = symbol_name,\n      ns = \"\",\n      root = \"\",\n      parts = [],\n      ns_parts = name.split(/\\//);\n\n  if (ns_parts.length > 1 && ns_parts[0] !== \"\") {\n    name = ns_parts.slice(1).join(\"/\");\n    if (name === \"\") {\n      name = symbol_name;\n    } else {\n      ns = ns_parts[0];\n    }\n  }\n\n  if (name.match(/^\\.+$/)) {\n    root = name;\n  } else {\n    var name_parts = name.split(/\\./);\n    root = name_parts[0];\n    parts = name_parts.slice(1);\n  }\n\n  return { namespace: ns, root: root, parts: parts };\n};\nexports.symbol = Symbol;\n\nfunction Keyword (name) {\n  this.name = name;\n}\nexports.keyword = Keyword;\n\nvar gensym_counter = 0;\nfunction gensym (root) {\n  return new Symbol(\"gensym$\" + root + \"$\" + (++gensym_counter));\n}\nexports.gensym = gensym;\n".replace(/exports[^\n]+\n/g, '');
 
 function BrowserLoader (root) {
   this.root = root;
@@ -176,8 +176,8 @@ Environment.prototype.evalText = function (session, text, error_cb) {
       }
     }
 
-  }, function (reader, token, buffer) {
-    var resolved = that.current_namespace.scope.resolve(parser.mungeSymbol(token.name));
+  }, function (reader, name, buffer) {
+    var resolved = that.current_namespace.scope.resolve(parser.mungeSymbol('reader-'+name));
     if (resolved && resolved.metadata['reader-macro']) {
       try {
         return resolved.value(reader, buffer);
@@ -566,8 +566,12 @@ var Symbol_parse = function (symbol_name) {
       ns_parts = name.split(/\//);
 
   if (ns_parts.length > 1 && ns_parts[0] !== "") {
-    ns = ns_parts[0];
-    name = ns_parts.slice(1).join("");
+    name = ns_parts.slice(1).join("/");
+    if (name === "") {
+      name = symbol_name;
+    } else {
+      ns = ns_parts[0];
+    }
   }
 
   if (name.match(/^\.+$/)) {
@@ -6527,36 +6531,13 @@ function stringReader (buffer, quote) {
   return str;
 }
 
-function regexReader (buffer, slash) {
-  var str = "", flags = "", ch;
-
-  while (ch = buffer.read1()) {
-    if (ch == '/') {
-      while ((ch = buffer.read1()).match(/^[gimy]$/)) {
-        flags += ch;
-      }
-      buffer.unread(ch);
-      break;
-    }
-
-    if (ch == "\\") {
-      str += ch;
-      ch = buffer.read1();
-    }
-
-    str += ch;
-  }
-
-  return RegExp(str, flags);
-}
-
 dispatchReader = function (buffer, hash) {
   var ch = buffer.read1();
   if (this.dispatch_macros[ch]) {
     return this.dispatch_macros[ch].call(this, buffer, ch);
   } else {
     if (buffer.dispatch_handler) {
-      return buffer.dispatch_handler(this, this.readToken(buffer, ch), buffer);
+      return buffer.dispatch_handler(this, ch, buffer);
     } else {
       throw "dispatch on symbol but no Buffer dispatch_handler"
     }
@@ -6697,17 +6678,6 @@ fnReader = function (buffer, openparen) {
   }
 }
 
-keywordFunctionReader = function (buffer, colon) {
-  var kw = this.readToken(buffer, colon);
-
-  if (kw instanceof core.keyword) {
-    return new core.list([new core.symbol('lambda'), [new core.symbol('o')],
-                          new core.symbol('o.' + kw.name)]);
-  } else {
-    throw "Invalid keywordFunction form " + kw;
-  }
-}
-
 function Reader (id_generator) {
   this.genID = id_generator;
 }
@@ -6731,9 +6701,7 @@ Reader.prototype.macros = {
 }
 
 Reader.prototype.dispatch_macros = {
-  '(': fnReader,
-  '/': regexReader,
-  ':': keywordFunctionReader
+  '(': fnReader
 }
 
 Reader.prototype.isWhitespace = function (str) { return str.match(/[\t\r\n,\s]/); }

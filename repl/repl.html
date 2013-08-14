@@ -151,6 +151,13 @@
 (print (sum.apply nil [1 2 3 4 5]))
 
 (print """that's a "useful" feature""")
+
+(loop [i 0]
+  (if (< i 4)
+    (do
+      (print i)
+      (recur i (+ i 1)))
+    i))
 </textarea>
       <textarea class="panel input right" id="terrible-output"></textarea>
       <div class="panel compiler-options">

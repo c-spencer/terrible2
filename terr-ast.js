@@ -131,7 +131,7 @@ var compilers = {
           return closure_body;
         } else {
           closure_body.push(JS.Return(fndef));
-          return JS.CallExpression(JS.FunctionExpression([], closure_body), []);
+          return IIFE(closure_body);
         }
       }
     }
@@ -208,7 +208,7 @@ var compilers = {
       }
 
       if (mode == "expression") {
-        return JS.CallExpression(JS.FunctionExpression([], statements), []);
+        return IIFE(statements);
       } else {
         return statements;
       }
@@ -285,7 +285,7 @@ var compilers = {
       if (mode == "statement" || mode == "return") {
         return [tryStatement];
       } else {
-        return JS.CallExpression(JS.FunctionExpression([], [tryStatement]), []);
+        return IIFE([tryStatement]);
       }
     }
   },
@@ -399,37 +399,76 @@ var compilers = {
   For: {
     fields: ['init', 'test', 'update', 'body'],
     compile: function (node, mode) {
-      if (mode == "expression") {
-        console.log("For not supported in expression position.")
-        throw "For not supported in expression position."
-      }
-
-      var for_statement = JS.ForStatement(
+      return StatementToMode(JS.ForStatement(
         intoBlock(node.init, "statement"),
         Terr.CompileToJS(node.test, "expression"),
         Terr.CompileToJS(node.update, "expression"),
         intoBlock(node.body, "statement")
-      )
-
-      return [for_statement];
+      ), mode);
     }
   },
 
   ForIn: {
     fields: ['left', 'right', 'body'],
     compile: function (node, mode) {
-      if (mode == "expression") {
-        console.log("ForIn not supported in expression position.")
-        throw "ForIn not supported in expression position."
-      }
-
-      var forin_statement = JS.ForInStatement(
+      return StatementToMode(JS.ForInStatement(
         intoBlock(node.left, "statement"),
         Terr.CompileToJS(node.right, "expression"),
         intoBlock(node.body, "statement")
-      )
+      ), mode);
+    }
+  },
 
-      return [forin_statement];
+  While: {
+    fields: ['test', 'body'],
+    compile: function (node, mode) {
+      return StatementToMode(JS.WhileStatement(
+        Terr.CompileToJS(node.test, "expression"),
+        intoBlock(node.body, "statement")
+      ), mode);
+    }
+  },
+
+  Loop: {
+    fields: ['label', 'body'],
+    compile: function (node, mode) {
+      var loop_statement = JS.LabeledStatement(
+        Terr.CompileToJS(node.label, "expression"),
+        JS.WhileStatement(
+          JS.Literal(true),
+          intoBlock(node.body, "return")
+        )
+      );
+
+      if (mode == "return") {
+        return [loop_statement];
+      } else if (mode == "statement") {
+        return [JS.ExpressionStatement(IIFE([loop_statement]))];
+      } else if (mode == "expression") {
+        return IIFE([loop_statement]);
+      }
+    }
+  },
+
+  Continue: {
+    fields: ['label'],
+    compile: function (node, mode) {
+      if (mode == "expression") {
+        throw "Continue in expression position? Is this real?"
+      }
+
+      return JS.ContinueStatement(Terr.CompileToJS(node.label, "expression"));
+    }
+  },
+
+  Break: {
+    fields: ['label'],
+    compile: function (node, mode) {
+      if (mode == "expression") {
+        throw "Break in expression position? Is this real?"
+      }
+
+      return JS.BreakStatement(Terr.CompileToJS(node.label, "expression"));
     }
   },
 
@@ -438,7 +477,7 @@ var compilers = {
     compile: function (node, mode) {
       var statement = JS.ThrowStatement(Terr.CompileToJS(node.expression, "expression"));
       if (mode == "expression") {
-        return JS.CallExpression(JS.FunctionExpression([], [statement]), []);
+        return IIFE([statement]);
       } else {
         return [statement];
       }
@@ -470,6 +509,20 @@ function ExpressionToMode (node, mode) {
     return [JS.Return(node)];
   }
   return node;
+}
+
+function StatementToMode (node, mode) {
+  if (node == "expression") {
+    return IIFE([node]);
+  } else if (node == "return") {
+    return [JS.Return(IIFE([node]))];
+  } else {
+    return [node];
+  }
+}
+
+function IIFE (body) {
+  return JS.CallExpression(JS.FunctionExpression([], body), []);
 }
 
 // Reify constructors

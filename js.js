@@ -91,6 +91,36 @@ exports.ForInStatement = function (left, right, body) {
   };
 };
 
+exports.WhileStatement = function (test, body) {
+  return {
+    type: 'WhileStatement',
+    test: test,
+    body: body
+  };
+};
+
+exports.ContinueStatement = function (label) {
+  return {
+    type: 'ContinueStatement',
+    label: label
+  };
+};
+
+exports.BreakStatement = function (label) {
+  return {
+    type: 'ContinueStatement',
+    label: label
+  };
+};
+
+exports.LabeledStatement = function (label, body) {
+  return {
+    type: 'LabeledStatement',
+    label: label,
+    body: body
+  };
+};
+
 exports.FunctionExpression = function(params, body) {
   return {
     type: 'FunctionExpression',

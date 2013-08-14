@@ -181,6 +181,14 @@
     (walker right)
     (opts.Terr.Seq (body.map walker))))
 
+(terr-macro js-while [opts test & body]
+  (var env (opts.env.newScope true false)
+       walker (opts.walker env))
+
+  (opts.Terr.While
+    (walker test)
+    (opts.Terr.Seq (body.map walker))))
+
 ; Core library
 
 (defmacro varfn [name & body]
@@ -340,3 +348,38 @@
     (opts.Terr.Seq (body.map (walker env)))
     (opts.Terr.Identifier munged-name)
     (opts.Terr.Seq (catch-body.map (walker catch-env)))))
+
+; loop-recur scratchings
+
+(terr-macro loop-body [opts & body]
+  (let [loop-id (opts.Terr.Identifier "loop")]
+    (set! opts.env.scope.js_frame.$loop loop-id)
+    (let [mapped-body (body.map (opts.walker opts.env))]
+      (if loop-id.$referenced
+        (opts.Terr.Loop loop-id (opts.Terr.Seq mapped-body))
+        (opts.Terr.Seq mapped-body)))))
+
+(terr-macro recur [opts & args]
+  (let [walker (opts.walker opts.env)
+        assign (walker `(set! ~@args))]
+    (set! opts.env.scope.js_frame.$loop.$referenced true)
+    (opts.Terr.Seq [assign (opts.Terr.Continue opts.env.scope.js_frame.$loop)])))
+
+(defmacro loop [bindings & body]
+  `(let ~bindings (loop-body ~@body)))
+
+; (loop [i 0]
+;   (if (< i 10)
+;     (do
+;       (print i)
+;       (recur i (+ i 1)))
+;     i))
+
+; (defn range [vec from to]
+;   (loop-body
+;     (cond
+;       (< from to) (recur vec (vec.concat from) from (+ from 1))
+;       (> from to) (recur vec (vec.concat from) from (- from 1))
+;       (== from to) (vec.concat from))))
+
+; (print (range [] 10 50))

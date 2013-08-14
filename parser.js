@@ -467,6 +467,7 @@ walk_handlers = {
 
     if (!resolved) {
       console.trace();
+      console.log("Couldn't resolve", node.name);
       throw "Couldn't resolve `" + node.name + "`";
     }
 

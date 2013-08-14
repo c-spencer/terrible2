@@ -119,6 +119,12 @@
   (var walker (opts.walker (opts.env.newScope true false)))
   (opts.Terr.Seq (body.map walker)))
 
+; As do, but no new scope.
+; stop-gap until public vars can jump up scopes
+(terr-macro do-noscope [opts & body]
+  (var walker (opts.walker opts.env))
+  (opts.Terr.Seq (body.map walker)))
+
 (terr-macro throw [opts arg]
   (opts.Terr.Throw ((opts.walker opts.env) arg)))
 
@@ -137,9 +143,64 @@
                         (opts.Terr.Continue opts.env.scope.js_frame.$loop)]))
     (throw "Must call recur from a loop-body context.")))
 
+(terr-macro get [opts target arg]
+  (var walker (opts.walker opts.env))
+  (opts.Terr.Member (walker target) (walker arg)))
+
+(def ^:macro cond
+  (lambda [t v & cases]
+    (if (and (keyword? t)
+             (== t.name "else"))
+      v
+      (if (> cases.length 0)
+        `(if ~t ~v (cond ~@cases))
+        `(if ~t ~v)))))
+
+(def ^:macro destructure
+  (lambda [left right]
+    (cond (symbol? left) `(var ~left ~right)
+          (list? left) `(destructure ~left.values (get ~right "values"))
+          (vector? left)
+            (do
+              (var bindings []
+                   i 0)
+              (loop-body
+                (if (< i left.length)
+                  (do
+                    (var l (get left i))
+                    (if (and (symbol? l) (== l.name "&"))
+                      (bindings.push
+                        `(destructure ~(get left (+ i 1))
+                                      (Array.prototype.slice.call ~right ~i)))
+                      (do
+                        (bindings.push `(destructure ~l (get ~right ~i)))
+                        (recur i (+ i 1))))
+                    )))
+              `(do-noscope ~@bindings))
+          :else (throw "Unsupported destructuring form"))))
+
+(deflambda analyse-fn-args [args]
+  (var formal-args []
+       destructure-pairs [])
+
+  (args.forEach (lambda [arg i]
+    (if (symbol? arg)
+      (formal-args.push arg)
+      (do
+        (var new-symb (symbol (+ "arg_" i "#")))
+        (formal-args.push new-symb)
+        (destructure-pairs.push `(destructure ~arg ~new-symb))))))
+
+  {:formal formal-args
+   :destructure destructure-pairs})
+
 (def ^:macro fn
   (lambda [& body]
-    (var extract (lambda [v] `[~v.0 (loop-body ~@(v.slice 1))]))
+    (var extract (lambda [v]
+      (var fn-args (analyse-fn-args v.0))
+      `[~(get fn-args "formal") (loop-body ~@(get fn-args "destructure")
+                                           ~@(v.slice 1))]
+    ))
     (if (list? body.0)
       `(lambda ~@(body.map (lambda [v] `(~@(extract v.values)))))
       `(lambda ~@(extract body)))))
@@ -161,16 +222,6 @@
 (extern Function Object Number String JSON console)
 
 ; Core terr macros
-
-; As do, but no new scope.
-; stop-gap until public vars can jump up scopes
-(terr-macro do-noscope [opts & body]
-  (var walker (opts.walker opts.env))
-  (opts.Terr.Seq (body.map walker)))
-
-(terr-macro get [opts target arg]
-  (var walker (opts.walker opts.env))
-  (opts.Terr.Member (walker target) (walker arg)))
 
 (terr-macro return [opts arg]
   (opts.Terr.Return ((opts.walker opts.env) arg)))
@@ -228,20 +279,17 @@
 (defmacro when [cond & body]
   `(if ~cond (do ~@body)))
 
-(defmacro cond [t v & cases]
-  (if (and (keyword? t)
-           (== t.name "else"))
-    v
-    (if (> cases.length 0)
-      `(if ~t ~v (cond ~@cases))
-      `(if ~t ~v))))
-
 (defmacro let [bindings & body]
   (var vars [])
   (js-for [i 0] (< i bindings.length) (set! i (+ i 2))
     (var s (get bindings i)
          v (get bindings (+ i 1)))
-    (vars.push `(var ~s ~v)))
+    (if (symbol? s)
+      (vars.push `(var ~s ~v))
+      (do
+        (var new-symb (symbol (+ "let_" i "#")))
+        (vars.push `(var ~new-symb ~v))
+        (vars.push `(destructure ~s ~new-symb)))))
   `(do ~@vars ~@body))
 
 (defmacro loop [bindings & body]

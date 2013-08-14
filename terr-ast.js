@@ -13,7 +13,11 @@ function intoBlock (node, mode) {
       return JS.Block(r);
     }
   } else {
-    return undefined;
+    if (mode == "return") {
+      return JS.Return();
+    } else {
+      return undefined;
+    }
   }
 }
 

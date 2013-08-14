@@ -144,7 +144,7 @@ builtins = {
 
         var parsed_arg = arg.parse();
 
-        if (parsed_arg.parts.length > 0) { throw "Invalid formal arg " + arg; }
+        if (parsed_arg.parts.length > 0) { throw "Invalid formal arg " + JSON.stringify(arg); }
 
         if (parsed_arg.root == "&") {
           consume_rest_arg = true;
@@ -301,7 +301,12 @@ function compile_eval (node, env) {
   var compile_nodes = Terr.CompileToJS(node, "return");
 
   var js = codegen.generate(JS.Program(compile_nodes));
-  return new Function('$ENV', js)(ENV);
+  try {
+    return new Function('$ENV', js)(ENV);
+  } catch (exc) {
+    console.log(exc, js);
+    throw exc;
+  }
 }
 
 function loc (node, form) {
@@ -345,10 +350,8 @@ walk_handlers = {
           return left;
         }, list_symb));
       } else {
-        return _loc(Terr.Call(
-          list_symb,
-          values
-        ));
+        list_symb.args = values;
+        return _loc(list_symb);
       }
     }
 

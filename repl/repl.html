@@ -136,6 +136,17 @@
     <div class="input-output">
       <textarea class="panel input left" id="terrible-input">
 (ns repl.example)
+; The default core consists mostly of macros and associated support functions
+; that can be entirely minified away for user code. However, protocols attach
+; functions onto various objects that are then retained by the minifier.
+; These protocols include:
+;   Equality (= a b)        : equality checking
+;   Iterable (map o fn)     : iteration over objects, arrays, etc.
+;            (each o fn)
+;   Printable (print-str o) : smarter printing of builtins and arrays
+
+; You can include these extra protocols by uncommenting the following line
+; (refer terrible.core.extras)
 
 (defn sum
   ([a] a)
@@ -176,10 +187,6 @@
           <option value="library" selected>library</option>
           <option value="standalone">standalone</option>
         </select>
-        <label>
-          <input type="checkbox" id="environment-extras">
-          Load core.extras
-        </label>
         <label>
           <input type="checkbox" id="environment-minify" checked>
           Minify

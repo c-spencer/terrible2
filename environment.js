@@ -9,11 +9,6 @@ var fs = require('fs');
 
 var core_js = fs.readFileSync("./core.js").replace(/exports[^\n]+\n/g, '');
 
-var known_namespaces = {
-  "terrible.core": fs.readFileSync("./src/terrible/core.terrible"),
-  "terrible.core.extras": fs.readFileSync("./src/terrible/core/extras.terrible")
-};
-
 function BrowserLoader (root) {
   this.root = root;
 };
@@ -58,11 +53,6 @@ function Environment (target, interactive) {
   this.current_namespace = this.getNamespace('user', true);
 };
 
-Environment.prototype.loadExtras = function () {
-  this.current_namespace.scope.refer('terrible.core.extras', null,
-    this.findNamespace('terrible.core.extras'));
-}
-
 Environment.prototype.findNamespace = function (name) {
   for (var i = 0; i < this.namespaces.length; ++i) {
     if (this.namespaces[i].name === name) {
@@ -71,12 +61,13 @@ Environment.prototype.findNamespace = function (name) {
   }
   var loaded = this.loader.loadPath(name.replace(/\./g, '/') + ".terrible");
   if (loaded) {
-    var ns = this.createNamespace(name);
+    var prev_ns = this.current_namespace,
+        ns = this.createNamespace(name);
 
-    var prev_ns = this.current_namespace;
     this.current_namespace = ns;
-    this.evalText(loaded);
+    this.evalSession().eval(loaded);
     this.current_namespace = prev_ns;
+
     return ns;
   }
 };
@@ -102,16 +93,30 @@ Environment.prototype.getNamespace = function (name, create) {
   }
 };
 
-Environment.prototype.evalText = function (text, error_cb) {
+Environment.prototype.evalSession = function () {
+  var session = {
+    readSession: (new reader.Reader(this.genID)).newReadSession()
+  };
+
+  var that = this;
+
+  return {
+    eval: function (text, error_cb) {
+      return that.evalText(session, text, error_cb);
+    }
+  }
+};
+
+Environment.prototype.evalText = function (session, text, error_cb) {
   var that = this;
 
   var results = [];
 
-  var forms = this.readSession.readString(text, function (err, form) {
+  var forms = session.readSession.readString(text, function (err, form) {
 
     if (err) {
-      var text = that.readSession.buffer.remaining().trim();
-      that.readSession.buffer.truncate();
+      var text = session.readSession.buffer.remaining().trim();
+      session.readSession.buffer.truncate();
       results.push({ text: text, exception: err });
       return;
     }

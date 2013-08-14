@@ -7,7 +7,6 @@ var mode = "library";
 var interactive = false;
 var minify = true;
 var compile_timeout = null;
-var extras = false;
 
 function compileTerrible(text, callback) {
   if (compile_timeout) {
@@ -21,15 +20,11 @@ function compileTerrible(text, callback) {
 function compileTerrible_(text) {
   var env = new Environment(target, interactive);
 
-  if (extras) {
-    env.loadExtras();
-  }
-
   var messages = [];
   env.scope.expose('print', function (v) {
     // Somewhat messy reach-in
-    var scope = env.findNamespace('terrible.core').scope;
-    var printer = scope.resolve('print_str');
+    var printer = env.current_namespace.scope.resolve('print_str');
+
     if (printer && printer.value) {
       messages.push("> " + printer.value(v));
     } else {
@@ -38,7 +33,7 @@ function compileTerrible_(text) {
   });
 
   try {
-    env.evalText(text, function (form, source, exc) {
+    env.evalSession().eval(text, function (form, source, exc) {
       messages.push("! " + source.trim());
       messages.push("! " + (exc.message ? exc.message : exc));
       if (exc.stack) {
@@ -99,14 +94,6 @@ document.getElementById('environment-mode').addEventListener('change',
   }
 );
 
-document.getElementById('environment-extras').addEventListener('change',
-  function () {
-    var el = document.getElementById('environment-extras');
-    extras = el.checked;
-    doCompile(true);
-  }
-);
-
 document.getElementById('environment-minify').addEventListener('change',
   function () {
     var el = document.getElementById('environment-minify');
@@ -120,6 +107,7 @@ doCompile();
 // REPL
 
 window.replEnvironment = new Environment("browser", false);
+window.evalSession = replEnvironment.evalSession();
 
 function addResult(form, value, result_class) {
   var el = document.getElementById('evaled-forms');
@@ -142,7 +130,7 @@ function addResult(form, value, result_class) {
 }
 
 function replEval(text) {
-  var results = replEnvironment.evalText(text + "\n");
+  var results = evalSession.eval(text + "\n");
 
   results.forEach(function (result) {
     if (result.exception) {

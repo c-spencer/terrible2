@@ -49,7 +49,7 @@ Scope.prototype.resolveNamespace = function (alias) {
   for (var i = 0; i < this.ns_references.length; ++i) {
     var ref = this.ns_references[i];
 
-    if (ref.alias === alias) {
+    if (ref.alias === alias || ref.name === alias) {
       return ref.ns;
     }
   }

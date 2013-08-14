@@ -10,11 +10,6 @@ var fs = require('fs');
 
 var core_js = "// Core Structures\n\n// Vector == Array\n// Map == Object\n// Literals == Number / String\n\nfunction List(values) {\n  var that = this;\n  this.values = values;\n\n  this.concat = function (arg) {\n    that.values = that.values.concat(arg);\n    return that;\n  };\n\n  this.push = function () {\n    that.values.push.apply(that.values, arguments);\n    return that;\n  };\n}\nexports.list = List;\n\nfunction Symbol(name) {\n  this.name = name;\n\n  this.parse = function () { return Symbol_parse(name); };\n}\nvar Symbol_parse = function (symbol_name) {\n  var name = symbol_name,\n      ns = \"\",\n      root = \"\",\n      parts = [],\n      ns_parts = name.split(/\\//);\n\n  if (ns_parts.length > 1 && ns_parts[0] !== \"\") {\n    ns = ns_parts[0];\n    name = ns_parts.slice(1).join(\"\");\n  }\n\n  if (name.match(/^\\.+$/)) {\n    root = name;\n  } else {\n    var name_parts = name.split(/\\./);\n    root = name_parts[0];\n    parts = name_parts.slice(1);\n  }\n\n  return { namespace: ns, root: root, parts: parts };\n};\nexports.symbol = Symbol;\n\nfunction Keyword (name) {\n  this.name = name;\n}\nexports.keyword = Keyword;\n\nvar gensym_counter = 0;\nfunction gensym (root) {\n  return new Symbol(\"gensym$\" + root + \"$\" + (++gensym_counter));\n}\nexports.gensym = gensym;\n".replace(/exports[^\n]+\n/g, '');
 
-var known_namespaces = {
-  "terrible.core": "(ns terrible.core)\n\n; Required bindings assumed by macros\n\n(var ^:external Array) ; needed early for var args\n\n(var ^{:terr-macro true :private false} new\n  (lambda [opts callee & args]\n    (var walker (opts.walker opts.env))\n    (opts.Terr.New (walker callee) (args.map walker))))\n\n(var ^{:private false} list (lambda [& args]\n  (new List args)))\n\n(var ^{:private false} symbol (lambda [name]\n  (new Symbol name)))\n\n(var ^{:private false} keyword (lambda [name]\n  (new Keyword name)))\n\n(var ^{:terr-macro true :private false} def\n  (lambda [opts id val]\n    (set! id.$metadata (opts.extend id.$metadata {:private false}))\n    (opts.builtins.var opts id val)))\n\n(def ^:terr-macro quote\n  (lambda [opts arg]\n    ((opts.walker (opts.env.setQuoted \"quote\")) arg)))\n\n(def ^:terr-macro syntax-quote\n  (lambda [opts arg]\n    ((opts.walker (opts.env.setQuoted \"syntax\")) arg)))\n\n(def ^:terr-macro unquote\n  (lambda [opts arg]\n    ((opts.walker (opts.env.setQuoted false)) arg)))\n\n; terr-macros bootstrapping\n\n(def ^:macro terr-macro\n  (lambda [name & body]\n    (var macro-name (symbol name.name))\n    (set! macro-name.$metadata {:terr-macro true})\n    `(def ~macro-name (lambda ~@body))))\n\n(var ^:macro defmacro-lambda\n  (lambda [name & body]\n    (var macro-name (symbol name.name))\n    (set! macro-name.$metadata {:macro true})\n    `(var ~macro-name (lambda ~@body))))\n\n(defmacro-lambda deflambda [name & body]\n  `(def ~name (lambda ~@body)))\n\n; js operators\n\n(defmacro-lambda binary-operator [symb op]\n  `(terr-macro ~symb [opts# ~'& args#]\n    (~'.reduce (args#.map (opts#.walker opts#.env))\n      (lambda [left# right#] (opts#.Terr.Binary left# ~op right#)))))\n\n(defmacro-lambda unary-operator [symb op]\n  `(terr-macro ~symb [opts# arg#]\n    (opts#.Terr.Unary ~op ((opts#.walker opts#.env) arg#))))\n\n(binary-operator + \"+\")\n(binary-operator == \"===\")\n(binary-operator ==? \"==\")\n(binary-operator - \"-\")\n(binary-operator not== \"!==\")\n(binary-operator not==? \"!=\")\n(binary-operator or \"||\")\n(binary-operator and \"&&\")\n(binary-operator > \">\")\n(binary-operator >= \">=\")\n(binary-operator < \"<\")\n(binary-operator <= \"<=\")\n(binary-operator / \"/\")\n(binary-operator instance? \"instanceof\")\n(binary-operator mod \"%\")\n\n(unary-operator not \"!\")\n(unary-operator xor \"~\")\n(unary-operator type \"typeof\")\n\n; Type checks\n\n(deflambda list? [l]\n  (instance? l List))\n\n(deflambda symbol? [s]\n  (instance? s Symbol))\n\n(deflambda keyword? [k]\n  (instance? k Keyword))\n\n(deflambda string? [s]\n  (== (type s) \"string\"))\n\n(deflambda number? [s]\n  (== (type s) \"number\"))\n\n(deflambda object? [o]\n  (and (not== nil o)\n       (== (type o) \"object\")))\n\n(deflambda vector? [v]\n  (Array.isArray v))\n\n; fn bootstrapping\n\n(terr-macro if [opts test cons alt]\n  (var walker (opts.walker opts.env))\n  (opts.Terr.If (walker test) (walker cons) (walker alt)))\n\n; Open a new logical scope, but not a new javascript scope, to allow block\n; insertion to work as expected.\n(terr-macro do [opts & body]\n  (var walker (opts.walker (opts.env.newScope true false)))\n  (opts.Terr.Seq (body.map walker)))\n\n; As do, but no new scope.\n; stop-gap until public vars can jump up scopes\n(terr-macro do-noscope [opts & body]\n  (var walker (opts.walker opts.env))\n  (opts.Terr.Seq (body.map walker)))\n\n(terr-macro throw [opts arg]\n  (opts.Terr.Throw ((opts.walker opts.env) arg)))\n\n(terr-macro loop-body [opts & body]\n  (var loop-id (opts.Terr.Identifier \"loop\"))\n  (set! opts.env.scope.js_frame.$loop loop-id)\n  (var mapped-body (body.map (opts.walker opts.env)))\n  (if loop-id.$referenced\n    (opts.Terr.Loop loop-id (opts.Terr.Seq mapped-body))\n    (opts.Terr.Seq mapped-body)))\n\n(terr-macro recur [opts & args]\n  (if opts.env.scope.js_frame.$loop\n    (do (set! opts.env.scope.js_frame.$loop.$referenced true)\n        (opts.Terr.Seq [((opts.walker opts.env) `(set! ~@args))\n                        (opts.Terr.Continue opts.env.scope.js_frame.$loop)]))\n    (throw \"Must call recur from a loop-body context.\")))\n\n(terr-macro get [opts target arg]\n  (var walker (opts.walker opts.env))\n  (opts.Terr.Member (walker target) (walker arg)))\n\n(def ^:macro cond\n  (lambda [t v & cases]\n    (if (and (keyword? t)\n             (== t.name \"else\"))\n      v\n      (if (> cases.length 0)\n        `(if ~t ~v (cond ~@cases))\n        `(if ~t ~v)))))\n\n(def ^:macro destructure\n  (lambda [left right]\n    (cond (symbol? left) `(var ~left ~right)\n          (list? left) `(destructure ~left.values (get ~right \"values\"))\n          (vector? left)\n            (do\n              (var bindings []\n                   i 0)\n              (loop-body\n                (if (< i left.length)\n                  (do\n                    (var l (get left i))\n                    (if (and (symbol? l) (== l.name \"&\"))\n                      (bindings.push\n                        `(destructure ~(get left (+ i 1))\n                                      (Array.prototype.slice.call ~right ~i)))\n                      (do\n                        (bindings.push `(destructure ~l (get ~right ~i)))\n                        (recur i (+ i 1))))\n                    )))\n              `(do-noscope ~@bindings))\n          :else (throw \"Unsupported destructuring form\"))))\n\n(deflambda analyse-fn-args [args]\n  (var formal-args []\n       destructure-pairs [])\n\n  (args.forEach (lambda [arg i]\n    (if (symbol? arg)\n      (formal-args.push arg)\n      (do\n        (var new-symb (gensym \"arg\"))\n        (formal-args.push new-symb)\n        (destructure-pairs.push `(destructure ~arg ~new-symb))))))\n\n  {:formal formal-args\n   :destructure destructure-pairs})\n\n(def ^:macro fn\n  (lambda [& body]\n    (var extract (lambda [v]\n      (var fn-args (analyse-fn-args v.0))\n      `[~(get fn-args \"formal\") (loop-body ~@(get fn-args \"destructure\")\n                                           ~@(v.slice 1))]\n    ))\n    (if (list? body.0)\n      `(lambda ~@(body.map (lambda [v] `(~@(extract v.values)))))\n      `(lambda ~@(extract body)))))\n\n(def ^:macro defmacro\n  (fn [name & body]\n    (var macro-name (symbol name.name))\n    (set! macro-name.$metadata {:macro true})\n    `(def ~macro-name (fn ~@body))))\n\n(defmacro defn [name & body]\n  `(def ~name (fn ~@body)))\n\n(defmacro extern [& symbs]\n  (symbs.forEach (fn [s] (set! s.$metadata {:external true})))\n  `(var ~@symbs))\n\n; Grab some core JavaScript objects\n(extern Function Object Number String JSON console)\n\n; Core terr macros\n\n(terr-macro return [opts arg]\n  (opts.Terr.Return ((opts.walker opts.env) arg)))\n\n; Refer a namespace into scope\n(terr-macro refer [opts symb alias]\n  (opts.env.scope.refer\n    symb.name\n    (if alias alias.name nil)\n    (do\n      (var ns (opts.env.env.findNamespace symb.name))\n      (if ns ns\n        (throw (+ \"Couldn't resolve namespace `\" symb.name \"`\")))))\n\n  (opts.Terr.Seq []))\n\n(terr-macro js-for [opts init test update & body]\n  (var env (opts.env.newScope true false)\n       walker (opts.walker env))\n\n  (opts.Terr.For\n    (walker `(var ~@init))\n    (walker test)\n    (walker update)\n    (opts.Terr.Seq (body.map walker))))\n\n(terr-macro js-for-in [opts left right & body]\n  (var env (opts.env.newScope true false)\n       walker (opts.walker env))\n\n  (if (not (symbol? left))\n    (throw \"Left binding in js-for-in must be a symbol.\"))\n\n  (opts.Terr.ForIn\n    (walker `(var ~left))\n    (walker right)\n    (opts.Terr.Seq (body.map walker))))\n\n(terr-macro js-while [opts test & body]\n  (var env (opts.env.newScope true false)\n       walker (opts.walker env))\n\n  (opts.Terr.While\n    (walker test)\n    (opts.Terr.Seq (body.map walker))))\n\n; Core library\n\n(defmacro varfn [name & body]\n  `(var ~name (fn ~@body)))\n\n(defmacro setfn! [name & body]\n  `(set! ~name (fn ~@body)))\n\n(defmacro when [cond & body]\n  `(if ~cond (do ~@body)))\n\n(defmacro let [bindings & body]\n  (var vars [])\n  (js-for [i 0] (< i bindings.length) (set! i (+ i 2))\n    (var s (get bindings i)\n         v (get bindings (+ i 1)))\n    (if (symbol? s)\n      (vars.push `(var ~s ~v))\n      (vars.push `(do-noscope (var let# ~v)\n                              (destructure ~s let#)))))\n  `(do ~@vars ~@body))\n\n(defmacro loop [bindings & body]\n  `(let ~bindings (loop-body ~@body)))\n\n(defmacro -> [left app & apps]\n  (cond\n    (not app)       left\n    (keyword? app) `(-> (get ~left ~app.name) ~@apps)\n    (list? app)    `(-> (~app.values.0 ~left ~@(app.values.slice 1))\n                        ~@apps)\n    (symbol? app)  `(-> (~app ~left) ~@apps)\n    :else           (throw \"Invalid -> target\")))\n\n(defmacro defprotocol [symb & fns]\n  (let [proto-marker (+ symb.name \"$proto$\")\n        fn-defs (fns.map (fn [list]\n                  (let [n       list.values.0\n                        args    list.values.1\n                        body   (list.values.slice 2)\n                        marker (+ proto-marker n.name)]\n                    `(defn ~n ~args\n                      (if (and (not==? nil ~args.0) (get ~args.0 ~marker))\n                        ((get ~args.0 ~marker) ~@args)\n                        (do ~@body))))))]\n    `(do-noscope\n      (def ~symb ~proto-marker)\n      ~@fn-defs)))\n\n(defmacro extend-type [cls protocol & methods]\n  `(do\n    ~@(methods.map (fn [method]\n      (let [n method.values.0]\n       `(set!\n          (get (get ~cls \"prototype\") (+ ~protocol ~n.name))\n          (fn ~@(method.values.slice 1))))\n      ))))\n\n(terr-macro try [opts & body]\n  (var walker opts.walker\n       env opts.env\n       catch-clause (body.pop))\n\n  (if (or (not (list? catch-clause))\n          (< catch-clause.values.length 2)\n          (not (symbol? catch-clause.values.0))\n          (not== (catch-clause.values.0.name \"catch\"))\n          (not (symbol? catch-clause.values.1)))\n    (throw \"Invalid catch clause\"))\n\n  (var catch-arg catch_clause.values.1\n       catch-body (catch-clause.values.slice 2)\n       parsed-catch-arg (catch-arg.parse))\n\n  (if (or (> parsed-catch-arg.parts.length 0)\n          parsed-catch-arg.namespace)\n    (throw \"Invalid catch arg\"))\n\n  (var munged-name (opts.mungeSymbol parsed-catch-arg.root)\n       catch-env (env.newScope true false))\n\n  (catch-env.scope.addSymbol munged-name\n    {:type \"any\"\n     :accessor (opts.Terr.Identifier munged-name)\n     :metadata {}})\n\n  (opts.Terr.Try\n    (opts.Terr.Seq (body.map (walker env)))\n    (opts.Terr.Identifier munged-name)\n    (opts.Terr.Seq (catch-body.map (walker catch-env)))))\n",
-  "terrible.core.extras": "(ns terrible.core.extras)\n\n(defprotocol Equality\n  (= [left right]\n    (== left right)))\n\n; Avoid extra dispatch for not=\n(defn not= [left right]\n  (not (= left right)))\n\n(extend-type Keyword Equality\n  (= [left right]\n    (and (keyword? right)\n         (== left.name right.name))))\n\n(extend-type Symbol Equality\n  (= [left right]\n    (and (symbol? right)\n         (== left.name right.name))))\n\n(defprotocol Iterable\n  (map [obj func]\n    (let [new-obj {}]\n      (js-for-in k obj\n        (if (obj.hasOwnProperty k)\n          (set! (get new-obj k) (func (get obj k) k))))\n      new-obj))\n  (each [obj func]\n    (js-for-in k obj\n      (if (obj.hasOwnProperty k)\n        (func (get obj k) k)))\n    nil))\n\n(extend-type Array Iterable\n  (map [arr func] (arr.map func))\n  (each [arr func] (arr.forEach func)))\n\n(extend-type List Iterable\n  (map [this-list func] (.concat (list) (this-list.values.map func)))\n  (each [this-list func] (this-list.values.forEach func)))\n\n(defprotocol Printable\n  (print-str [obj]\n    (cond\n      (object? obj) (let [parts []]\n                      (each obj (fn [v k]\n                        (parts.push (print-str k))\n                        (parts.push (print-str v))))\n                      (+ \"{\" (parts.join \" \") \"}\"))\n      :else         (JSON.stringify obj))))\n\n(extend-type Array Printable\n  (print-str [arr]\n    (+ \"[\" (.join (map arr print-str) \" \") \"]\")))\n\n(extend-type List Printable\n  (print-str [list]\n    (+ \"(\" (.values.join (map list print-str) \" \") \")\")))\n\n(extend-type Keyword Printable\n  (print-str [kw]\n    (+ \":\" kw.name)))\n\n(extend-type Symbol Printable\n  (print-str [symb] symb.name))\n\n(extend-type Function Printable\n  (print-str [f]\n    (+ \"#fn[\" f.name \"]\")))\n"
-};
-
 function BrowserLoader (root) {
   this.root = root;
 };
@@ -59,11 +54,6 @@ function Environment (target, interactive) {
   this.current_namespace = this.getNamespace('user', true);
 };
 
-Environment.prototype.loadExtras = function () {
-  this.current_namespace.scope.refer('terrible.core.extras', null,
-    this.findNamespace('terrible.core.extras'));
-}
-
 Environment.prototype.findNamespace = function (name) {
   for (var i = 0; i < this.namespaces.length; ++i) {
     if (this.namespaces[i].name === name) {
@@ -72,12 +62,13 @@ Environment.prototype.findNamespace = function (name) {
   }
   var loaded = this.loader.loadPath(name.replace(/\./g, '/') + ".terrible");
   if (loaded) {
-    var ns = this.createNamespace(name);
+    var prev_ns = this.current_namespace,
+        ns = this.createNamespace(name);
 
-    var prev_ns = this.current_namespace;
     this.current_namespace = ns;
-    this.evalText(loaded);
+    this.evalSession().eval(loaded);
     this.current_namespace = prev_ns;
+
     return ns;
   }
 };
@@ -103,16 +94,30 @@ Environment.prototype.getNamespace = function (name, create) {
   }
 };
 
-Environment.prototype.evalText = function (text, error_cb) {
+Environment.prototype.evalSession = function () {
+  var session = {
+    readSession: (new reader.Reader(this.genID)).newReadSession()
+  };
+
+  var that = this;
+
+  return {
+    eval: function (text, error_cb) {
+      return that.evalText(session, text, error_cb);
+    }
+  }
+};
+
+Environment.prototype.evalText = function (session, text, error_cb) {
   var that = this;
 
   var results = [];
 
-  var forms = this.readSession.readString(text, function (err, form) {
+  var forms = session.readSession.readString(text, function (err, form) {
 
     if (err) {
-      var text = that.readSession.buffer.remaining().trim();
-      that.readSession.buffer.truncate();
+      var text = session.readSession.buffer.remaining().trim();
+      session.readSession.buffer.truncate();
       results.push({ text: text, exception: err });
       return;
     }
@@ -872,7 +877,7 @@ Scope.prototype.resolveNamespace = function (alias) {
   for (var i = 0; i < this.ns_references.length; ++i) {
     var ref = this.ns_references[i];
 
-    if (ref.alias === alias) {
+    if (ref.alias === alias || ref.name === alias) {
       return ref.ns;
     }
   }
@@ -6913,7 +6918,6 @@ var mode = "library";
 var interactive = false;
 var minify = true;
 var compile_timeout = null;
-var extras = false;
 
 function compileTerrible(text, callback) {
   if (compile_timeout) {
@@ -6927,15 +6931,11 @@ function compileTerrible(text, callback) {
 function compileTerrible_(text) {
   var env = new Environment(target, interactive);
 
-  if (extras) {
-    env.loadExtras();
-  }
-
   var messages = [];
   env.scope.expose('print', function (v) {
     // Somewhat messy reach-in
-    var scope = env.findNamespace('terrible.core').scope;
-    var printer = scope.resolve('print_str');
+    var printer = env.current_namespace.scope.resolve('print_str');
+
     if (printer && printer.value) {
       messages.push("> " + printer.value(v));
     } else {
@@ -6944,7 +6944,7 @@ function compileTerrible_(text) {
   });
 
   try {
-    env.evalText(text, function (form, source, exc) {
+    env.evalSession().eval(text, function (form, source, exc) {
       messages.push("! " + source.trim());
       messages.push("! " + (exc.message ? exc.message : exc));
       if (exc.stack) {
@@ -7005,14 +7005,6 @@ document.getElementById('environment-mode').addEventListener('change',
   }
 );
 
-document.getElementById('environment-extras').addEventListener('change',
-  function () {
-    var el = document.getElementById('environment-extras');
-    extras = el.checked;
-    doCompile(true);
-  }
-);
-
 document.getElementById('environment-minify').addEventListener('change',
   function () {
     var el = document.getElementById('environment-minify');
@@ -7026,6 +7018,7 @@ doCompile();
 // REPL
 
 window.replEnvironment = new Environment("browser", false);
+window.evalSession = replEnvironment.evalSession();
 
 function addResult(form, value, result_class) {
   var el = document.getElementById('evaled-forms');
@@ -7048,7 +7041,7 @@ function addResult(form, value, result_class) {
 }
 
 function replEval(text) {
-  var results = replEnvironment.evalText(text + "\n");
+  var results = evalSession.eval(text + "\n");
 
   results.forEach(function (result) {
     if (result.exception) {

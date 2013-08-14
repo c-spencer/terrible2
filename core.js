@@ -33,8 +33,12 @@ var Symbol_parse = function (symbol_name) {
       ns_parts = name.split(/\//);
 
   if (ns_parts.length > 1 && ns_parts[0] !== "") {
-    ns = ns_parts[0];
-    name = ns_parts.slice(1).join("");
+    name = ns_parts.slice(1).join("/");
+    if (name === "") {
+      name = symbol_name;
+    } else {
+      ns = ns_parts[0];
+    }
   }
 
   if (name.match(/^\.+$/)) {

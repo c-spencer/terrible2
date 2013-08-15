@@ -40,6 +40,7 @@ describe('Symbol', function () {
     parse('a/a.b/', {namespace: 'a', root: 'a', parts: ['b/']});
     parse('.', {namespace: '', root: '.', parts: []});
     parse('..', {namespace: '', root: '..', parts: []});
+    parse('a/..', {namespace: 'a', root: '..', parts: []});
     parse('.a', {namespace: '', root: '', parts: ['a']});
     parse('.a.b', {namespace: '', root: '', parts: ['a', 'b']});
   });

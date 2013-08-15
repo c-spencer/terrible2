@@ -26,24 +26,16 @@ function Symbol(name) {
 
   this.parse = function () { return Symbol_parse(name); };
 }
-var symbol_regex = /^([^\.\/][^\/]*)\/([^\.]+(?:\.[^\.]+)*)$|(\.?[^\.]+(?:\.[^\.]+)*)$/;
+var symbol_regex = /^([^\.\/][^\/]*)\/(?:(\.+)|([^\.]+(?:\.[^\.]+)*))$|(?:(\.+)|(\.?[^\.]+(?:\.[^\.]+)*))$/;
 var Symbol_parse = function (symbol_name) {
   var match = symbol_name.match(symbol_regex);
   if (match) {
-    if (match[1]) {
-      var parts = match[2].split(/\./g);
-      return {
-        namespace: match[1],
-        root: parts[0],
-        parts: parts.slice(1)
-      }
-    } else {
-      var parts = match[3].split(/\./g);
-      return {
-        namespace: "",
-        root: parts[0],
-        parts: parts.slice(1)
-      }
+    var dots = (match[1] ? match[2] : match[4]) || "";
+    var parts = ((match[1] ? match[3] : match[5]) || "").split(/\./g);
+    return {
+      namespace: match[1] || "",
+      root: dots + parts[0],
+      parts: parts.slice(1)
     }
   } else {
     console.log("Couldn't match symbol regex", symbol_name);
@@ -73,7 +65,7 @@ var parser = require('./parser');
 var core = require('./core');
 var fs = require('fs');
 
-var core_js = "// Core Structures\n\n// Vector == Array\n// Map == Object\n// Literals == Number / String\n\nfunction List(values) {\n  var that = this;\n  this.values = values;\n\n  this.concat = function (arg) {\n    that.values = that.values.concat(arg);\n    return that;\n  };\n\n  this.push = function () {\n    that.values.push.apply(that.values, arguments);\n    return that;\n  };\n}\nexports.list = List;\n\nfunction Symbol(name) {\n  this.name = name;\n\n  this.parse = function () { return Symbol_parse(name); };\n}\nvar symbol_regex = /^([^\\.\\/][^\\/]*)\\/([^\\.]+(?:\\.[^\\.]+)*)$|(\\.?[^\\.]+(?:\\.[^\\.]+)*)$/;\nvar Symbol_parse = function (symbol_name) {\n  var match = symbol_name.match(symbol_regex);\n  if (match) {\n    if (match[1]) {\n      var parts = match[2].split(/\\./g);\n      return {\n        namespace: match[1],\n        root: parts[0],\n        parts: parts.slice(1)\n      }\n    } else {\n      var parts = match[3].split(/\\./g);\n      return {\n        namespace: \"\",\n        root: parts[0],\n        parts: parts.slice(1)\n      }\n    }\n  } else {\n    console.log(\"Couldn't match symbol regex\", symbol_name);\n    throw \"Couldn't match symbol regex\" + symbol_name;\n  }\n};\nexports.symbol = Symbol;\n\nfunction Keyword (name) {\n  this.name = name;\n}\nexports.keyword = Keyword;\n\nvar gensym_counter = 0;\nfunction gensym (root) {\n  return new Symbol(\"gensym$\" + root + \"$\" + (++gensym_counter));\n}\nexports.gensym = gensym;\n".replace(/exports[^\n]+\n/g, '');
+var core_js = "// Core Structures\n\n// Vector == Array\n// Map == Object\n// Literals == Number / String\n\nfunction List(values) {\n  var that = this;\n  this.values = values;\n\n  this.concat = function (arg) {\n    that.values = that.values.concat(arg);\n    return that;\n  };\n\n  this.push = function () {\n    that.values.push.apply(that.values, arguments);\n    return that;\n  };\n}\nexports.list = List;\n\nfunction Symbol(name) {\n  this.name = name;\n\n  this.parse = function () { return Symbol_parse(name); };\n}\nvar symbol_regex = /^([^\\.\\/][^\\/]*)\\/(?:(\\.+)|([^\\.]+(?:\\.[^\\.]+)*))$|(?:(\\.+)|(\\.?[^\\.]+(?:\\.[^\\.]+)*))$/;\nvar Symbol_parse = function (symbol_name) {\n  var match = symbol_name.match(symbol_regex);\n  if (match) {\n    var dots = (match[1] ? match[2] : match[4]) || \"\";\n    var parts = ((match[1] ? match[3] : match[5]) || \"\").split(/\\./g);\n    return {\n      namespace: match[1] || \"\",\n      root: dots + parts[0],\n      parts: parts.slice(1)\n    }\n  } else {\n    console.log(\"Couldn't match symbol regex\", symbol_name);\n    throw \"Couldn't match symbol regex\" + symbol_name;\n  }\n};\nexports.symbol = Symbol;\n\nfunction Keyword (name) {\n  this.name = name;\n}\nexports.keyword = Keyword;\n\nvar gensym_counter = 0;\nfunction gensym (root) {\n  return new Symbol(\"gensym$\" + root + \"$\" + (++gensym_counter));\n}\nexports.gensym = gensym;\n".replace(/exports[^\n]+\n/g, '');
 
 function BrowserLoader (root) {
   this.root = root;

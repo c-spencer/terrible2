@@ -1,4 +1,4 @@
-;(function(e,t,n){function i(n,s){if(!t[n]){if(!e[n]){var o=typeof require=="function"&&require;if(!s&&o)return o(n,!0);if(r)return r(n,!0);throw new Error("Cannot find module '"+n+"'")}var u=t[n]={exports:{}};e[n][0].call(u.exports,function(t){var r=e[n][1][t];return i(r?r:t)},u,u.exports)}return t[n].exports}var r=typeof require=="function"&&require;for(var s=0;s<n.length;s++)i(n[s]);return i})({1:[function(require,module,exports){
+;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 exports.Identifier = function(name) {
   return {
     type: 'Identifier',
@@ -336,7 +336,7 @@ function gensym (root) {
 exports.gensym = gensym;
 
 },{}],3:[function(require,module,exports){
-(function(){var Namespace = require('./namespace');
+var Namespace = require('./namespace');
 var Terr = require('./terr-ast');
 var codegen = require('escodegen');
 var JS = require('./js');
@@ -596,8 +596,7 @@ Environment.prototype.asJS = function (mode, entry_fn) {
 
 exports.Environment = Environment;
 
-})()
-},{"./core":2,"./js":4,"./namespace":5,"./parser":6,"./reader":7,"./terr-ast":8,"escodegen":10,"fs":25}],4:[function(require,module,exports){
+},{"./core":2,"./js":4,"./namespace":5,"./parser":6,"./reader":7,"./terr-ast":8,"escodegen":10,"fs":23}],4:[function(require,module,exports){
 exports.Identifier = function(name) {
   return {
     type: 'Identifier',
@@ -1056,7 +1055,7 @@ exports.Namespace = Namespace;
 exports.Scope = Scope;
 
 },{"./js":4,"./terr-ast":8}],6:[function(require,module,exports){
-(function(){var walker = require('./walker')
+var walker = require('./walker')
 var core = require('./core')
 var JS = require('./js')
 var codegen = require('escodegen')
@@ -1628,9 +1627,8 @@ exports.process = function (form, env, quoted) {
 };
 exports.mungeSymbol = mungeSymbol;
 
-})()
 },{"./core":2,"./js":4,"./terr-ast":8,"./walker":9,"escodegen":10}],7:[function(require,module,exports){
-(function(){// A partial port and modification of the Clojure reader
+// A partial port and modification of the Clojure reader
 // https://github.com/clojure/clojure/blob/master/src/jvm/clojure/lang/LispReader.java
 
 var core = require('./core')
@@ -2155,8 +2153,8 @@ Reader.prototype.readDelimitedList = function (endchar, buffer) {
   return forms;
 }
 
-Reader.prototype.readString = function (str) {
-  return this.newReadSession().readString(str);
+Reader.prototype.readString = function (str, form_handler) {
+  return this.newReadSession().readString(str, form_handler);
 }
 
 Reader.prototype.newReadSession = function () {
@@ -2192,50 +2190,10 @@ Reader.prototype.newReadSession = function () {
   }
 }
 
-// Debug and testing
+exports.Reader = Reader;
+exports.Buffer = Buffer;
 
-print_str = function (node) {
-  if (node === null) {
-    return "null";
-  } if (node.$isList) {
-    return "(" + node.values.map(print_str).join(" ") + ")";
-  } else if (node.type == "Symbol") {
-
-    var root = node.parts[0];
-
-    for (var i = 1, len = node.parts.length; i < len; ++i) {
-      root += "[" + print_str(node.parts[i]) + "]"
-    }
-
-    return root;
-  } else if (node.type == "Keyword") {
-    return ":" + node.toString();
-  } else if (Array.isArray(node)) {
-    return "[" + node.map(print_str).join(" ") + "]";
-  } else if (typeof node == "object") {
-    return "{" + Object.keys(node).map(function (k) {
-      return print_str(k) + ' ' + print_str(node[k])
-    }).join(" ") + "}"
-  } else {
-    return JSON.stringify(node);
-  }
-}
-
-try_parse = function (str) {
-  result = reader.readString(str);
-  console.log(require('util').inspect(result, false, 10));
-  console.log(result.map(print_str).join("\n"))
-}
-
-// var reader = new Reader()
-// try_parse("(a.b[(+ 1 2)][:a] [1 2 3] {:a 5 :b 6})");
-// try_parse('(a """my fun " string""")')
-
-exports.Reader = Reader
-exports.printString = print_str;
-
-})()
-},{"./core":2,"util":27}],8:[function(require,module,exports){
+},{"./core":2}],8:[function(require,module,exports){
 var JS = require('./JS');
 
 var Terr = exports;
@@ -2834,7 +2792,7 @@ function walkProgramTree (handler, node) {
 module.exports = walkProgramTree;
 
 },{}],10:[function(require,module,exports){
-(function(global){/*
+var global=self;/*
   Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2012-2013 Michael Ficarra <escodegen.copyright@michael.ficarra.me>
   Copyright (C) 2012-2013 Mathias Bynens <mathias@qiwi.be>
@@ -5146,9 +5104,8 @@ module.exports = walkProgramTree;
 }());
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-})(self)
 },{"./package.json":22,"estraverse":11,"source-map":12}],11:[function(require,module,exports){
-(function(){/*
+/*
   Copyright (C) 2012 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2012 Ariya Hidayat <ariya.hidayat@gmail.com>
 
@@ -5464,7 +5421,6 @@ module.exports = walkProgramTree;
 }));
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-})()
 },{}],12:[function(require,module,exports){
 /*
  * Copyright 2009-2011 Mozilla Foundation and contributors
@@ -7147,7 +7103,7 @@ define(function (require, exports, module) {
 });
 
 },{"amdefine":21}],21:[function(require,module,exports){
-(function(process,__filename){/** vim: et:ts=4:sw=4:sts=4
+var process=require("__browserify_process"),__filename="/../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js";/** vim: et:ts=4:sw=4:sts=4
  * @license amdefine 0.0.5 Copyright (c) 2011, The Dojo Foundation All Rights Reserved.
  * Available via the MIT or new BSD license.
  * see: http://github.com/jrburke/amdefine for details
@@ -7447,9 +7403,8 @@ function amdefine(module, require) {
 
 module.exports = amdefine;
 
-})(require("__browserify_process"),"/../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js")
-},{"__browserify_process":28,"path":26}],22:[function(require,module,exports){
-module.exports=module.exports={
+},{"__browserify_process":25,"path":24}],22:[function(require,module,exports){
+module.exports={
   "name": "escodegen",
   "description": "ECMAScript code generator",
   "homepage": "http://github.com/Constellation/escodegen.html",
@@ -7520,370 +7475,10 @@ module.exports=module.exports={
 }
 
 },{}],23:[function(require,module,exports){
-var Environment = require('../lib/environment').Environment;
-
-// INPUT OUTPUT
-
-var target = "browser";
-var mode = "library";
-var interactive = false;
-var minify = true;
-var compile_timeout = null;
-
-function compileTerrible(text, callback) {
-  if (compile_timeout) {
-    clearTimeout(compile_timeout);
-  }
-  compile_timeout = setTimeout(function () {
-    callback(compileTerrible_(text))
-  }, 500);
-}
-
-function compileTerrible_(text) {
-  var env = new Environment(target, interactive);
-
-  var messages = [];
-  env.scope.expose('print', function (v) {
-    // Somewhat messy reach-in
-    var printer = env.current_namespace.scope.resolve('print_str');
-
-    if (printer && printer.value) {
-      messages.push("> " + printer.value(v));
-    } else {
-      messages.push("> " + JSON.stringify(v));
-    }
-  });
-
-  try {
-    env.evalSession().eval(text, function (form, source, exc) {
-      messages.push("! " + source.trim());
-      messages.push("! " + (exc.message ? exc.message : exc));
-      if (exc.stack) {
-        messages.push("! " + exc.stack);
-      }
-    });
-  } catch (exc) {
-    messages.push("! " + (exc.message ? exc.message : exc));
-    if (exc.stack) {
-      messages.push("! " + exc.stack);
-    }
-  }
-
-  var js = env.asJS(mode);
-
-  if (minify) {
-    var parsed = UglifyJS.parse(js, {});
-    parsed.figure_out_scope();
-    var compressor = UglifyJS.Compressor({});
-    var compressed = parsed.transform(compressor);
-    // compressed.figure_out_scope();
-    // compressed.compute_char_frequency();
-    // compressed.mangle_names();
-    js = compressed.print_to_string({beautify: true});
-  }
-
-  return { js: js, log: messages };
-}
-
-var last_compile = null;
-
-function doCompile(forced) {
-  var this_compile = document.getElementById('terrible-input').value;
-  if (forced === true || this_compile != last_compile) {
-    compileTerrible(this_compile, function (result) {
-      document.getElementById('terrible-output').value = result.js;
-      document.getElementById('terrible-log').value = result.log.join("\n");
-    });
-  }
-  last_compile = this_compile;
-}
-
-document.getElementById('terrible-input').addEventListener('keyup', doCompile);
-
-document.getElementById('environment-target').addEventListener('change',
-  function () {
-    var el = document.getElementById('environment-target');
-    target = el.value;
-    doCompile(true);
-  }
-);
-
-document.getElementById('environment-mode').addEventListener('change',
-  function () {
-    var el = document.getElementById('environment-mode');
-    mode = el.value;
-    doCompile(true);
-  }
-);
-
-document.getElementById('environment-minify').addEventListener('change',
-  function () {
-    var el = document.getElementById('environment-minify');
-    minify = el.checked;
-    doCompile(true);
-  }
-);
-
-doCompile();
-
-// REPL
-
-window.replEnvironment = new Environment("browser", false);
-window.evalSession = replEnvironment.evalSession();
-
-function addResult(form, value, result_class) {
-  var el = document.getElementById('evaled-forms');
-  var new_el = document.createElement('div');
-  new_el.setAttribute('class', 'evaled');
-
-  var form_el = document.createElement('pre');
-  form_el.setAttribute('class', 'form');
-  form_el.innerText = form;
-  new_el.appendChild(form_el);
-
-  var value_el = document.createElement('pre');
-  value_el.setAttribute('class', result_class);
-  value_el.innerText = value;
-  new_el.appendChild(value_el);
-
-  el.appendChild(new_el);
-
-  el.scrollTop = el.scrollHeight;
-}
-
-function replEval(text) {
-  var results = evalSession.eval(text + "\n");
-
-  results.forEach(function (result) {
-    if (result.exception) {
-      addResult(result.text.trim(), result.exception, "value exception");
-    } else {
-      addResult(result.text.trim(), result.value, "value");
-    }
-  });
-}
-
-function replSubmit () {
-  var el = document.getElementById('repl-input');
-  replEval(el.value);
-  el.value = replEnvironment.readSession.buffer.remaining().trim();
-  replEnvironment.readSession.buffer.truncate();
-}
-
-document.getElementById('repl-submit').addEventListener('click', replSubmit);
-
-document.getElementById('repl-input').addEventListener('keypress', function (e) {
-  if (e.shiftKey && e.which == 13) {
-    e.preventDefault();
-    replSubmit();
-  }
-})
-
-// replEval("(+ 1 2)");
-// replEval("(defn inc [i] (+ i 1))");
-// replEval("(inc 5)");
-
-// Toggles
-
-document.getElementById('repl-toggle').addEventListener('click', function () {
-  document.querySelector('body').setAttribute('class', 'repl');
-});
-
-document.getElementById('io-toggle').addEventListener('click', function () {
-  document.querySelector('body').setAttribute('class', 'input-output');
-});
-
-},{"../lib/environment":3}],24:[function(require,module,exports){
-(function(process){if (!process.EventEmitter) process.EventEmitter = function () {};
-
-var EventEmitter = exports.EventEmitter = process.EventEmitter;
-var isArray = typeof Array.isArray === 'function'
-    ? Array.isArray
-    : function (xs) {
-        return Object.prototype.toString.call(xs) === '[object Array]'
-    }
-;
-function indexOf (xs, x) {
-    if (xs.indexOf) return xs.indexOf(x);
-    for (var i = 0; i < xs.length; i++) {
-        if (x === xs[i]) return i;
-    }
-    return -1;
-}
-
-// By default EventEmitters will print a warning if more than
-// 10 listeners are added to it. This is a useful default which
-// helps finding memory leaks.
-//
-// Obviously not all Emitters should be limited to 10. This function allows
-// that to be increased. Set to zero for unlimited.
-var defaultMaxListeners = 10;
-EventEmitter.prototype.setMaxListeners = function(n) {
-  if (!this._events) this._events = {};
-  this._events.maxListeners = n;
-};
-
-
-EventEmitter.prototype.emit = function(type) {
-  // If there is no 'error' event listener then throw.
-  if (type === 'error') {
-    if (!this._events || !this._events.error ||
-        (isArray(this._events.error) && !this._events.error.length))
-    {
-      if (arguments[1] instanceof Error) {
-        throw arguments[1]; // Unhandled 'error' event
-      } else {
-        throw new Error("Uncaught, unspecified 'error' event.");
-      }
-      return false;
-    }
-  }
-
-  if (!this._events) return false;
-  var handler = this._events[type];
-  if (!handler) return false;
-
-  if (typeof handler == 'function') {
-    switch (arguments.length) {
-      // fast cases
-      case 1:
-        handler.call(this);
-        break;
-      case 2:
-        handler.call(this, arguments[1]);
-        break;
-      case 3:
-        handler.call(this, arguments[1], arguments[2]);
-        break;
-      // slower
-      default:
-        var args = Array.prototype.slice.call(arguments, 1);
-        handler.apply(this, args);
-    }
-    return true;
-
-  } else if (isArray(handler)) {
-    var args = Array.prototype.slice.call(arguments, 1);
-
-    var listeners = handler.slice();
-    for (var i = 0, l = listeners.length; i < l; i++) {
-      listeners[i].apply(this, args);
-    }
-    return true;
-
-  } else {
-    return false;
-  }
-};
-
-// EventEmitter is defined in src/node_events.cc
-// EventEmitter.prototype.emit() is also defined there.
-EventEmitter.prototype.addListener = function(type, listener) {
-  if ('function' !== typeof listener) {
-    throw new Error('addListener only takes instances of Function');
-  }
-
-  if (!this._events) this._events = {};
-
-  // To avoid recursion in the case that type == "newListeners"! Before
-  // adding it to the listeners, first emit "newListeners".
-  this.emit('newListener', type, listener);
-
-  if (!this._events[type]) {
-    // Optimize the case of one listener. Don't need the extra array object.
-    this._events[type] = listener;
-  } else if (isArray(this._events[type])) {
-
-    // Check for listener leak
-    if (!this._events[type].warned) {
-      var m;
-      if (this._events.maxListeners !== undefined) {
-        m = this._events.maxListeners;
-      } else {
-        m = defaultMaxListeners;
-      }
-
-      if (m && m > 0 && this._events[type].length > m) {
-        this._events[type].warned = true;
-        console.error('(node) warning: possible EventEmitter memory ' +
-                      'leak detected. %d listeners added. ' +
-                      'Use emitter.setMaxListeners() to increase limit.',
-                      this._events[type].length);
-        console.trace();
-      }
-    }
-
-    // If we've already got an array, just append.
-    this._events[type].push(listener);
-  } else {
-    // Adding the second element, need to change to array.
-    this._events[type] = [this._events[type], listener];
-  }
-
-  return this;
-};
-
-EventEmitter.prototype.on = EventEmitter.prototype.addListener;
-
-EventEmitter.prototype.once = function(type, listener) {
-  var self = this;
-  self.on(type, function g() {
-    self.removeListener(type, g);
-    listener.apply(this, arguments);
-  });
-
-  return this;
-};
-
-EventEmitter.prototype.removeListener = function(type, listener) {
-  if ('function' !== typeof listener) {
-    throw new Error('removeListener only takes instances of Function');
-  }
-
-  // does not use listeners(), so no side effect of creating _events[type]
-  if (!this._events || !this._events[type]) return this;
-
-  var list = this._events[type];
-
-  if (isArray(list)) {
-    var i = indexOf(list, listener);
-    if (i < 0) return this;
-    list.splice(i, 1);
-    if (list.length == 0)
-      delete this._events[type];
-  } else if (this._events[type] === listener) {
-    delete this._events[type];
-  }
-
-  return this;
-};
-
-EventEmitter.prototype.removeAllListeners = function(type) {
-  if (arguments.length === 0) {
-    this._events = {};
-    return this;
-  }
-
-  // does not use listeners(), so no side effect of creating _events[type]
-  if (type && this._events && this._events[type]) this._events[type] = null;
-  return this;
-};
-
-EventEmitter.prototype.listeners = function(type) {
-  if (!this._events) this._events = {};
-  if (!this._events[type]) this._events[type] = [];
-  if (!isArray(this._events[type])) {
-    this._events[type] = [this._events[type]];
-  }
-  return this._events[type];
-};
-
-})(require("__browserify_process"))
-},{"__browserify_process":28}],25:[function(require,module,exports){
 // nothing to see here... no file methods for the browser
 
-},{}],26:[function(require,module,exports){
-(function(process){function filter (xs, fn) {
+},{}],24:[function(require,module,exports){
+var process=require("__browserify_process");function filter (xs, fn) {
     var res = [];
     for (var i = 0; i < xs.length; i++) {
         if (fn(xs[i], i, xs)) res.push(xs[i]);
@@ -8059,361 +7654,9 @@ exports.relative = function(from, to) {
   return outputParts.join('/');
 };
 
-})(require("__browserify_process"))
-},{"__browserify_process":28}],27:[function(require,module,exports){
-var events = require('events');
+exports.sep = '/';
 
-exports.isArray = isArray;
-exports.isDate = function(obj){return Object.prototype.toString.call(obj) === '[object Date]'};
-exports.isRegExp = function(obj){return Object.prototype.toString.call(obj) === '[object RegExp]'};
-
-
-exports.print = function () {};
-exports.puts = function () {};
-exports.debug = function() {};
-
-exports.inspect = function(obj, showHidden, depth, colors) {
-  var seen = [];
-
-  var stylize = function(str, styleType) {
-    // http://en.wikipedia.org/wiki/ANSI_escape_code#graphics
-    var styles =
-        { 'bold' : [1, 22],
-          'italic' : [3, 23],
-          'underline' : [4, 24],
-          'inverse' : [7, 27],
-          'white' : [37, 39],
-          'grey' : [90, 39],
-          'black' : [30, 39],
-          'blue' : [34, 39],
-          'cyan' : [36, 39],
-          'green' : [32, 39],
-          'magenta' : [35, 39],
-          'red' : [31, 39],
-          'yellow' : [33, 39] };
-
-    var style =
-        { 'special': 'cyan',
-          'number': 'blue',
-          'boolean': 'yellow',
-          'undefined': 'grey',
-          'null': 'bold',
-          'string': 'green',
-          'date': 'magenta',
-          // "name": intentionally not styling
-          'regexp': 'red' }[styleType];
-
-    if (style) {
-      return '\033[' + styles[style][0] + 'm' + str +
-             '\033[' + styles[style][1] + 'm';
-    } else {
-      return str;
-    }
-  };
-  if (! colors) {
-    stylize = function(str, styleType) { return str; };
-  }
-
-  function format(value, recurseTimes) {
-    // Provide a hook for user-specified inspect functions.
-    // Check that value is an object with an inspect function on it
-    if (value && typeof value.inspect === 'function' &&
-        // Filter out the util module, it's inspect function is special
-        value !== exports &&
-        // Also filter out any prototype objects using the circular check.
-        !(value.constructor && value.constructor.prototype === value)) {
-      return value.inspect(recurseTimes);
-    }
-
-    // Primitive types cannot have properties
-    switch (typeof value) {
-      case 'undefined':
-        return stylize('undefined', 'undefined');
-
-      case 'string':
-        var simple = '\'' + JSON.stringify(value).replace(/^"|"$/g, '')
-                                                 .replace(/'/g, "\\'")
-                                                 .replace(/\\"/g, '"') + '\'';
-        return stylize(simple, 'string');
-
-      case 'number':
-        return stylize('' + value, 'number');
-
-      case 'boolean':
-        return stylize('' + value, 'boolean');
-    }
-    // For some reason typeof null is "object", so special case here.
-    if (value === null) {
-      return stylize('null', 'null');
-    }
-
-    // Look up the keys of the object.
-    var visible_keys = Object_keys(value);
-    var keys = showHidden ? Object_getOwnPropertyNames(value) : visible_keys;
-
-    // Functions without properties can be shortcutted.
-    if (typeof value === 'function' && keys.length === 0) {
-      if (isRegExp(value)) {
-        return stylize('' + value, 'regexp');
-      } else {
-        var name = value.name ? ': ' + value.name : '';
-        return stylize('[Function' + name + ']', 'special');
-      }
-    }
-
-    // Dates without properties can be shortcutted
-    if (isDate(value) && keys.length === 0) {
-      return stylize(value.toUTCString(), 'date');
-    }
-
-    var base, type, braces;
-    // Determine the object type
-    if (isArray(value)) {
-      type = 'Array';
-      braces = ['[', ']'];
-    } else {
-      type = 'Object';
-      braces = ['{', '}'];
-    }
-
-    // Make functions say that they are functions
-    if (typeof value === 'function') {
-      var n = value.name ? ': ' + value.name : '';
-      base = (isRegExp(value)) ? ' ' + value : ' [Function' + n + ']';
-    } else {
-      base = '';
-    }
-
-    // Make dates with properties first say the date
-    if (isDate(value)) {
-      base = ' ' + value.toUTCString();
-    }
-
-    if (keys.length === 0) {
-      return braces[0] + base + braces[1];
-    }
-
-    if (recurseTimes < 0) {
-      if (isRegExp(value)) {
-        return stylize('' + value, 'regexp');
-      } else {
-        return stylize('[Object]', 'special');
-      }
-    }
-
-    seen.push(value);
-
-    var output = keys.map(function(key) {
-      var name, str;
-      if (value.__lookupGetter__) {
-        if (value.__lookupGetter__(key)) {
-          if (value.__lookupSetter__(key)) {
-            str = stylize('[Getter/Setter]', 'special');
-          } else {
-            str = stylize('[Getter]', 'special');
-          }
-        } else {
-          if (value.__lookupSetter__(key)) {
-            str = stylize('[Setter]', 'special');
-          }
-        }
-      }
-      if (visible_keys.indexOf(key) < 0) {
-        name = '[' + key + ']';
-      }
-      if (!str) {
-        if (seen.indexOf(value[key]) < 0) {
-          if (recurseTimes === null) {
-            str = format(value[key]);
-          } else {
-            str = format(value[key], recurseTimes - 1);
-          }
-          if (str.indexOf('\n') > -1) {
-            if (isArray(value)) {
-              str = str.split('\n').map(function(line) {
-                return '  ' + line;
-              }).join('\n').substr(2);
-            } else {
-              str = '\n' + str.split('\n').map(function(line) {
-                return '   ' + line;
-              }).join('\n');
-            }
-          }
-        } else {
-          str = stylize('[Circular]', 'special');
-        }
-      }
-      if (typeof name === 'undefined') {
-        if (type === 'Array' && key.match(/^\d+$/)) {
-          return str;
-        }
-        name = JSON.stringify('' + key);
-        if (name.match(/^"([a-zA-Z_][a-zA-Z_0-9]*)"$/)) {
-          name = name.substr(1, name.length - 2);
-          name = stylize(name, 'name');
-        } else {
-          name = name.replace(/'/g, "\\'")
-                     .replace(/\\"/g, '"')
-                     .replace(/(^"|"$)/g, "'");
-          name = stylize(name, 'string');
-        }
-      }
-
-      return name + ': ' + str;
-    });
-
-    seen.pop();
-
-    var numLinesEst = 0;
-    var length = output.reduce(function(prev, cur) {
-      numLinesEst++;
-      if (cur.indexOf('\n') >= 0) numLinesEst++;
-      return prev + cur.length + 1;
-    }, 0);
-
-    if (length > 50) {
-      output = braces[0] +
-               (base === '' ? '' : base + '\n ') +
-               ' ' +
-               output.join(',\n  ') +
-               ' ' +
-               braces[1];
-
-    } else {
-      output = braces[0] + base + ' ' + output.join(', ') + ' ' + braces[1];
-    }
-
-    return output;
-  }
-  return format(obj, (typeof depth === 'undefined' ? 2 : depth));
-};
-
-
-function isArray(ar) {
-  return ar instanceof Array ||
-         Array.isArray(ar) ||
-         (ar && ar !== Object.prototype && isArray(ar.__proto__));
-}
-
-
-function isRegExp(re) {
-  return re instanceof RegExp ||
-    (typeof re === 'object' && Object.prototype.toString.call(re) === '[object RegExp]');
-}
-
-
-function isDate(d) {
-  if (d instanceof Date) return true;
-  if (typeof d !== 'object') return false;
-  var properties = Date.prototype && Object_getOwnPropertyNames(Date.prototype);
-  var proto = d.__proto__ && Object_getOwnPropertyNames(d.__proto__);
-  return JSON.stringify(proto) === JSON.stringify(properties);
-}
-
-function pad(n) {
-  return n < 10 ? '0' + n.toString(10) : n.toString(10);
-}
-
-var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep',
-              'Oct', 'Nov', 'Dec'];
-
-// 26 Feb 16:19:34
-function timestamp() {
-  var d = new Date();
-  var time = [pad(d.getHours()),
-              pad(d.getMinutes()),
-              pad(d.getSeconds())].join(':');
-  return [d.getDate(), months[d.getMonth()], time].join(' ');
-}
-
-exports.log = function (msg) {};
-
-exports.pump = null;
-
-var Object_keys = Object.keys || function (obj) {
-    var res = [];
-    for (var key in obj) res.push(key);
-    return res;
-};
-
-var Object_getOwnPropertyNames = Object.getOwnPropertyNames || function (obj) {
-    var res = [];
-    for (var key in obj) {
-        if (Object.hasOwnProperty.call(obj, key)) res.push(key);
-    }
-    return res;
-};
-
-var Object_create = Object.create || function (prototype, properties) {
-    // from es5-shim
-    var object;
-    if (prototype === null) {
-        object = { '__proto__' : null };
-    }
-    else {
-        if (typeof prototype !== 'object') {
-            throw new TypeError(
-                'typeof prototype[' + (typeof prototype) + '] != \'object\''
-            );
-        }
-        var Type = function () {};
-        Type.prototype = prototype;
-        object = new Type();
-        object.__proto__ = prototype;
-    }
-    if (typeof properties !== 'undefined' && Object.defineProperties) {
-        Object.defineProperties(object, properties);
-    }
-    return object;
-};
-
-exports.inherits = function(ctor, superCtor) {
-  ctor.super_ = superCtor;
-  ctor.prototype = Object_create(superCtor.prototype, {
-    constructor: {
-      value: ctor,
-      enumerable: false,
-      writable: true,
-      configurable: true
-    }
-  });
-};
-
-var formatRegExp = /%[sdj%]/g;
-exports.format = function(f) {
-  if (typeof f !== 'string') {
-    var objects = [];
-    for (var i = 0; i < arguments.length; i++) {
-      objects.push(exports.inspect(arguments[i]));
-    }
-    return objects.join(' ');
-  }
-
-  var i = 1;
-  var args = arguments;
-  var len = args.length;
-  var str = String(f).replace(formatRegExp, function(x) {
-    if (x === '%%') return '%';
-    if (i >= len) return x;
-    switch (x) {
-      case '%s': return String(args[i++]);
-      case '%d': return Number(args[i++]);
-      case '%j': return JSON.stringify(args[i++]);
-      default:
-        return x;
-    }
-  });
-  for(var x = args[i]; i < len; x = args[++i]){
-    if (x === null || typeof x !== 'object') {
-      str += ' ' + x;
-    } else {
-      str += ' ' + exports.inspect(x);
-    }
-  }
-  return str;
-};
-
-},{"events":24}],28:[function(require,module,exports){
+},{"__browserify_process":25}],25:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -8467,5 +7710,179 @@ process.chdir = function (dir) {
     throw new Error('process.chdir is not supported');
 };
 
-},{}]},{},[23])
+},{}],26:[function(require,module,exports){
+var Environment = require('../lib/environment').Environment;
+
+// INPUT OUTPUT
+
+var target = "browser";
+var mode = "library";
+var interactive = false;
+var minify = true;
+var compile_timeout = null;
+
+function compileTerrible(text, callback) {
+  if (compile_timeout) {
+    clearTimeout(compile_timeout);
+  }
+  compile_timeout = setTimeout(function () {
+    callback(compileTerrible_(text))
+  }, 500);
+}
+
+function compileTerrible_(text) {
+  var env = new Environment(target, interactive);
+
+  var messages = [];
+  env.scope.expose('print', function (v) {
+    // Somewhat messy reach-in
+    var printer = env.current_namespace.scope.resolve('print_str');
+
+    if (printer && printer.value) {
+      messages.push("> " + printer.value(v));
+    } else {
+      messages.push("> " + JSON.stringify(v));
+    }
+  });
+
+  try {
+    env.evalSession().eval(text, function (form, source, exc) {
+      messages.push("! " + source.trim());
+      messages.push("! " + (exc.message ? exc.message : exc));
+      if (exc.stack) {
+        messages.push("! " + exc.stack);
+      }
+    });
+  } catch (exc) {
+    messages.push("! " + (exc.message ? exc.message : exc));
+    if (exc.stack) {
+      messages.push("! " + exc.stack);
+    }
+  }
+
+  var js = env.asJS(mode);
+
+  if (minify) {
+    var parsed = UglifyJS.parse(js, {});
+    parsed.figure_out_scope();
+    var compressor = UglifyJS.Compressor({});
+    var compressed = parsed.transform(compressor);
+    // compressed.figure_out_scope();
+    // compressed.compute_char_frequency();
+    // compressed.mangle_names();
+    js = compressed.print_to_string({beautify: true});
+  }
+
+  return { js: js, log: messages };
+}
+
+var last_compile = null;
+
+function doCompile(forced) {
+  var this_compile = document.getElementById('terrible-input').value;
+  if (forced === true || this_compile != last_compile) {
+    compileTerrible(this_compile, function (result) {
+      document.getElementById('terrible-output').value = result.js;
+      document.getElementById('terrible-log').value = result.log.join("\n");
+    });
+  }
+  last_compile = this_compile;
+}
+
+document.getElementById('terrible-input').addEventListener('keyup', doCompile);
+
+document.getElementById('environment-target').addEventListener('change',
+  function () {
+    var el = document.getElementById('environment-target');
+    target = el.value;
+    doCompile(true);
+  }
+);
+
+document.getElementById('environment-mode').addEventListener('change',
+  function () {
+    var el = document.getElementById('environment-mode');
+    mode = el.value;
+    doCompile(true);
+  }
+);
+
+document.getElementById('environment-minify').addEventListener('change',
+  function () {
+    var el = document.getElementById('environment-minify');
+    minify = el.checked;
+    doCompile(true);
+  }
+);
+
+doCompile();
+
+// REPL
+
+window.replEnvironment = new Environment("browser", false);
+window.evalSession = replEnvironment.evalSession();
+
+function addResult(form, value, result_class) {
+  var el = document.getElementById('evaled-forms');
+  var new_el = document.createElement('div');
+  new_el.setAttribute('class', 'evaled');
+
+  var form_el = document.createElement('pre');
+  form_el.setAttribute('class', 'form');
+  form_el.innerText = form;
+  new_el.appendChild(form_el);
+
+  var value_el = document.createElement('pre');
+  value_el.setAttribute('class', result_class);
+  value_el.innerText = value;
+  new_el.appendChild(value_el);
+
+  el.appendChild(new_el);
+
+  el.scrollTop = el.scrollHeight;
+}
+
+function replEval(text) {
+  var results = evalSession.eval(text + "\n");
+
+  results.forEach(function (result) {
+    if (result.exception) {
+      addResult(result.text.trim(), result.exception, "value exception");
+    } else {
+      addResult(result.text.trim(), result.value, "value");
+    }
+  });
+}
+
+function replSubmit () {
+  var el = document.getElementById('repl-input');
+  replEval(el.value);
+  el.value = replEnvironment.readSession.buffer.remaining().trim();
+  replEnvironment.readSession.buffer.truncate();
+}
+
+document.getElementById('repl-submit').addEventListener('click', replSubmit);
+
+document.getElementById('repl-input').addEventListener('keypress', function (e) {
+  if (e.shiftKey && e.which == 13) {
+    e.preventDefault();
+    replSubmit();
+  }
+})
+
+// replEval("(+ 1 2)");
+// replEval("(defn inc [i] (+ i 1))");
+// replEval("(inc 5)");
+
+// Toggles
+
+document.getElementById('repl-toggle').addEventListener('click', function () {
+  document.querySelector('body').setAttribute('class', 'repl');
+});
+
+document.getElementById('io-toggle').addEventListener('click', function () {
+  document.querySelector('body').setAttribute('class', 'input-output');
+});
+
+},{"../lib/environment":3}]},{},[26])
 ;

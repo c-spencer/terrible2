@@ -485,6 +485,7 @@ Environment.prototype.evalText = function (session, text, error_cb) {
     if (err) {
       var text = session.readSession.buffer.remaining().trim();
       session.readSession.buffer.truncate();
+      console.log(err, err.stack);
       results.push({ text: text, exception: err });
       return;
     }
@@ -522,8 +523,8 @@ Environment.prototype.evalText = function (session, text, error_cb) {
         console.log(exc, exc.stack);
       }
     } else {
-      console.log("Couldn't resolve dispatcher for ", token)
-      throw "Couldn't resolve dispatcher for " + token
+      console.log("Couldn't resolve dispatcher for `" + name + "`")
+      throw "Couldn't resolve dispatcher for `" + name + "`"
     }
   });
 
@@ -1093,6 +1094,7 @@ function mungeSymbol (str) {
     .replace(/\|/g, "_BAR_")   .replace(/\{/g, "_LBRACE_")   .replace(/\}/g, "_RBRACE_")
     .replace(/\[/g, "_LBRACK_").replace(/\]/g, "_RBRACK_")   .replace(/\//g, "_SLASH_")
     .replace(/\\/g, "_BSLASH_").replace(/\?/g, "_QMARK_")    .replace(/\./g, "_DOT_")
+    .replace(/\(/g, "_LPAREN_").replace(/\)/g, "_RPAREN_")
     .replace(RegExp("^(" + reserved_words.join("|") + ")$"), function (match) {
       return match + "_";
     });
@@ -1740,7 +1742,7 @@ function hashReader (buffer, openparen) {
   for (var i = 0, len = hash.length; i < len; i += 2) {
     var left = hash[i];
     var right = hash[i+1];
-    if (left instanceof core.keyword) {
+    if (left instanceof core.keyword || left instanceof core.symbol) {
       obj[left.name] = right;
     } else {
       obj[left] = right;
@@ -1771,13 +1773,9 @@ function unquoteReader (buffer, apostrophe) {
   }
 }
 
-function splatReader (buffer, tilde) {
-  return new core.list([new core.symbol('splat'), this.read(buffer)]);
-}
-
 function metadataReader (buffer, caret) {
   var ch = buffer.lookahead(1);
-  if (this.isWhitespace(ch)) {
+  if (ch === "" || this.isWhitespace(ch)) {
     return this.read(buffer);
   } else {
     var metaform = this.read(buffer);
@@ -1841,154 +1839,18 @@ function stringReader (buffer, quote) {
 
 dispatchReader = function (buffer, hash) {
   var ch = buffer.lookahead(1);
-  if (this.dispatch_macros[ch]) {
-    return this.dispatch_macros[ch].call(this, buffer, ch);
+  if (buffer.dispatch_handler) {
+    return buffer.dispatch_handler(this, ch, buffer);
   } else {
-    if (buffer.dispatch_handler) {
-      return buffer.dispatch_handler(this, ch, buffer);
-    } else {
-      throw "dispatch on symbol but no Buffer dispatch_handler"
-    }
+    throw "dispatch on symbol but no Buffer dispatch_handler"
   }
-}
-
-function findArg (reader, n) {
-  for (var i = 0, len = reader.ARG_ENV.length; i < len; ++i) {
-    var arg = reader.ARG_ENV[i];
-    if (n === arg.n) return arg;
-  }
-}
-
-gen_arg = function (reader, n) {
-  var root = (n === -1) ? "rest" : "arg$" + n;
-  return new core.symbol(reader.genID(root));
-}
-
-function registerArg (reader, n) {
-  if (!reader.ARG_ENV) {
-    throw "arg lit not in #()"
-  }
-
-  var arg = findArg(reader, n);
-  if (arg == null) {
-    var symbol = gen_arg(reader, n);
-    reader.ARG_ENV.push({n: n, symbol: symbol});
-    return symbol;
-  } else {
-    return arg.symbol;
-  }
-}
-
-argReader = function (buffer, percent) {
-  if (!this.ARG_ENV) {
-    return this.readToken(buffer, percent);
-  }
-
-  var ch = buffer.lookahead(1);
-
-  if (this.isWhitespace(ch) || this.isTerminatingMacro(ch)) {
-    return registerArg(this, 1);
-  } else if (ch == ".") {
-    var root = registerArg(this, 1);
-    var symb = this.read(buffer);
-
-    return new core.symbol(root.name + symb.name);
-  } else if (this.isDigit(ch)) {
-
-    var n = buffer.read1();
-    var buffer_state = buffer.save();
-    ch = buffer.read1();
-
-    while (this.isDigit(ch)) {
-      n += ch;
-      buffer_state = buffer.save();
-      ch = buffer.read1();
-    }
-
-    buffer.restore(buffer_state);
-
-    var n = parseFloat(n);
-
-    var root = registerArg(this, n);
-
-    if (buffer.lookahead(1) == ".") {
-      var symb = this.read(buffer);
-      return new core.symbol(root.name + symb.name);
-    } else {
-      return root;
-    }
-  }
-
-  var n = this.read(buffer);
-
-  if (n instanceof core.symbol && n.name == '&') {
-    return this.registerArg(-1);
-  }
-
-  if (typeof n != 'number') {
-    throw 'arg literal must be %, %& or %n ' + JSON.stringify(buffer.getPos())
-  }
-
-  return this.registerArg(n);
-}
-
-fnReader = function (buffer, openparen) {
-  var originalENV = this.ARG_ENV;
-
-  this.ARG_ENV = [];
-
-  var form = this.read(buffer);
-
-  if (originalENV && this.ARG_ENV.length != 0) {
-    throw "Cannot nest lambdas with arguments. " + JSON.stringify(buffer.getPos())
-  }
-
-  if (this.ARG_ENV.length > 0) {
-    this.ARG_ENV.sort(function (a, b) {
-      if (a.n == -1) return 1;
-      if (b.n == -1) return -1;
-      return a.n > b.n;
-    });
-
-    if (this.ARG_ENV[this.ARG_ENV.length - 1].n === -1) {
-      var rest_arg = this.ARG_ENV.pop().symbol;
-    } else {
-      var rest_arg = null;
-    }
-
-    var args = [];
-    for (var i = 0, len = this.ARG_ENV.length; i < len; ++i) {
-      args[this.ARG_ENV[i].n - 1] = this.ARG_ENV[i].symbol;
-    }
-
-    for (var i = 0, len = args.length; i < len; ++i) {
-      if (!args[i]) {
-        args[i] = gen_arg(this, i + 1);
-      }
-    }
-
-    if (rest_arg) {
-      args.push(new core.symbol('&'));
-      args.push(rest_arg);
-    }
-  } else {
-    var args = [];
-  }
-
-  this.ARG_ENV = originalENV;
-
-  if (form.values[0] && !(form.values[0] instanceof core.symbol)) {
-    return new core.list([new core.symbol('lambda'), args].concat(form.values));
-  } else {
-    return new core.list([new core.symbol('lambda'), args, form]);
-  }
-}
+};
 
 function Reader (id_generator) {
   this.genID = id_generator;
 }
 
-Reader.prototype.macros = {
+var MACROS = {
   "[": vectorReader,
   "{": hashReader,
   "(": listReader,
@@ -1999,26 +1861,39 @@ Reader.prototype.macros = {
   "`": syntaxQuoteReader,
   "'": quoteReader,
   "~": unquoteReader,
-  "@": splatReader,
   '"': stringReader,
-  '%': argReader,
   '#': dispatchReader,
   '^': metadataReader
 }
 
-Reader.prototype.dispatch_macros = {
-  '(': fnReader
+function extend_macros (map) {
+  var new_macros = {};
+  for (var k in MACROS) {
+    new_macros[k] = MACROS[k];
+  }
+  for (var k in map) {
+    new_macros[k] = map[k];
+  }
+  return new_macros;
 }
+
+Reader.prototype.withMacros = function (map, fn) {
+  var prev_macros = MACROS;
+  MACROS = extend_macros(map);
+  var ret = fn();
+  MACROS = prev_macros;
+  return ret;
+};
 
 Reader.prototype.isWhitespace = function (str) { return str.match(/[\t\r\n,\s]/); }
 Reader.prototype.isDigit = function (str) { return /^[0-9]$/.exec(str); }
 Reader.prototype.isNumber = function (n) { return !isNaN(parseFloat(n)) && isFinite(n); }
 Reader.prototype.isTerminatingMacro = function (ch) {
-  return this.macros[ch] && ch != '#' && ch != '\'' && ch != '%'
+  return MACROS[ch] && ch != '#' && ch != '\'' && ch != '%'
 }
 
 function annotateLocation (form, buffer, start_state) {
-  if (form !== null && typeof form === "object") {
+  if (form !== null && typeof form === "object" && form.constructor != Object) {
     form.loc = buffer.locationFromState(start_state);
   }
   return form;
@@ -2040,7 +1915,7 @@ Reader.prototype.read = function (buffer) {
       return this.readNumber(buffer, ch);
     }
 
-    if (macro = this.macros[ch]) {
+    if (macro = MACROS[ch]) {
       var ret = macro.call(this, buffer, ch);
       if (ret == buffer) {
         continue;
@@ -2054,7 +1929,10 @@ Reader.prototype.read = function (buffer) {
       var ch2 = buffer.read1();
       if (this.isDigit(ch2)) {
         var n = this.readNumber(buffer, ch2);
-        return annotateLocation(new core.list([new core.symbol(ch), n]), buffer, start_state);
+        if (ch == '-') {
+          n = 0 - n;
+        }
+        return n;
       } else {
         buffer.restore(buffer_state);
       }
@@ -2068,7 +1946,7 @@ Reader.prototype.readNumber = function (buffer, s) {
   while (true) {
     var buffer_state = buffer.save();
     var ch = buffer.read1();
-    if (this.isWhitespace(ch) || this.macros[ch]) {
+    if (this.isWhitespace(ch) || MACROS[ch]) {
       buffer.restore(buffer_state);
       break;
     }
@@ -2086,7 +1964,6 @@ Reader.prototype.reifySymbol = function (s) {
   if (s == 'nil' || s == 'null') return null;
   if (s == 'true') return true;
   if (s == 'false') return false;
-  if (s == 'undefined') return new core.symbol('undefined');
   if (symbolPattern.exec(s)) return new core.symbol(s);
 
   throw "Invalid token: #{s}";
@@ -2133,7 +2010,7 @@ Reader.prototype.readDelimitedList = function (endchar, buffer) {
 
     if (ch === endchar) break;
 
-    if (macro = this.macros[ch]) {
+    if (macro = MACROS[ch]) {
       ret = macro.call(this, buffer, ch);
     } else {
       buffer.restore(buffer_state);
@@ -2147,8 +2024,8 @@ Reader.prototype.readDelimitedList = function (endchar, buffer) {
   return forms;
 }
 
-Reader.prototype.readString = function (str, form_handler) {
-  return this.newReadSession().readString(str, form_handler);
+Reader.prototype.readString = function (str, form_handler, dispatch_handler) {
+  return this.newReadSession().readString(str, form_handler, dispatch_handler);
 }
 
 Reader.prototype.newReadSession = function () {
@@ -2163,9 +2040,11 @@ Reader.prototype.newReadSession = function () {
       var forms = [], buffer_state;
       try {
         buffer_state = buffer.save();
-        while (form = reader.read(buffer)) {
+        while ((form = reader.read(buffer)) !== undefined) {
 
-          form.$text = buffer.string.substring(buffer_state.pos, buffer.pos);
+          if (form != null && form.constructor !== Object) {
+            form.$text = buffer.string.substring(buffer_state.pos, buffer.pos);
+          }
 
           form_handler(null, form);
 
@@ -2453,7 +2332,11 @@ var compilers = {
   Literal: {
     fields: ['value'],
     compile: function (node, mode) {
-      return ExpressionToMode(JS.Literal(node.value), mode);
+      if (typeof node.value == "number" && node.value < 0) {
+        return ExpressionToMode(JS.UnaryExpression('-', JS.Literal(0 - node.value)), mode);
+      } else {
+        return ExpressionToMode(JS.Literal(node.value), mode);
+      }
     }
   },
 

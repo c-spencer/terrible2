@@ -221,7 +221,7 @@
   `(var ~@symbs))
 
 ; Grab some core JavaScript objects
-(extern Function Object Number String RegExp JSON console)
+(extern Function Object Number String RegExp JSON console parseFloat)
 
 ; Core terr macros
 
@@ -392,3 +392,92 @@
                              ch (buffer.read1))
         :else         (recur str (+ str ch)
                              ch (buffer.read1))))))
+
+(varfn gen-arg [n]
+  (gensym (if (== n -1) "rest" (+ "arg$" n))))
+
+(varfn arg-reader [buffer percent]
+  (if (not this.ARG_ENV) (return (this.readToken buffer percent)))
+
+  (let [reader this
+        env reader.ARG_ENV
+        find-arg (fn [n]
+                    (loop [i 0]
+                      (when (< i env.length)
+                        (if (== (get (get env i) "n") n)
+                          (get env i)
+                          (recur i (+ i 1))))))
+        register-arg (fn [n]
+          (let [arg (find-arg n)]
+            (if arg
+              arg.symbol
+              (let [symb (gen-arg n)]
+                (env.push {:n n :symbol symb})
+                symb))))
+        ch (buffer.lookahead 1)]
+    (cond
+      (or (reader.isWhitespace ch)
+          (reader.isTerminatingMacro ch))
+        (register-arg 1)
+
+      (== ch ".")
+        (let [root (register-arg 1)
+              symb (reader.read buffer)]
+          (symbol (+ root.name symb.name)))
+
+      (reader.isDigit ch)
+        (do
+          (var n (buffer.read1))
+          (loop [state (buffer.save)
+                 ch (buffer.read1)]
+            (if (reader.isDigit ch)
+              (recur n (+ n ch)
+                     state (buffer.save)
+                     ch (buffer.read1))
+              (buffer.restore state)))
+
+          (set! n (parseFloat n))
+
+          (if (== (buffer.lookahead 1) ".")
+            (symbol (+ (get (register-arg n) "name")
+                       (get (reader.read buffer) "name")))
+            (register-arg n))))
+    ))
+
+(def ^:reader-macro reader-_LPAREN_
+  (fn [reader buffer]
+    (var original-env reader.ARG_ENV
+         env [])
+    (set! reader.ARG_ENV env)
+
+    (var form (reader.withMacros {:% arg-reader} (fn [] (reader.read buffer)))
+         args [])
+
+    (set! reader.ARG_ENV original-env)
+
+    (when (> env.length 0)
+      (env.sort (fn [a b]
+        (cond (== a.n -1) 1
+              (== b.n -1) -1
+              :else       (> a.n b.n))))
+
+      (var rest-arg
+        (if (== (get env (- env.length 1)) -1)
+          (.symbol (env.pop))
+          nil))
+
+      ; assign args
+      (env.forEach (fn [arg i]
+        (set! (get args (- arg.n 1)) arg.symbol)))
+
+      ; fill in the gaps
+      (js-for [i 0] (< i args.length) (set! i (+ i 1))
+        (when (not (get args i))
+          (set! (get args i) (gen-arg (+ i 1)))))
+
+      (when rest-arg
+        (args.push (symbol "&") rest-arg)))
+
+    (if (symbol? form.values.0)
+      `(lambda ~args ~form)
+      `(lambda ~args ~@form.values))))

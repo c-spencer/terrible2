@@ -401,19 +401,24 @@
 
   (let [reader this
         env reader.ARG_ENV
-        find-arg (fn [n]
+        find-arg  (fn [n]
                     (loop [i 0]
                       (when (< i env.length)
                         (if (== (get (get env i) "n") n)
                           (get env i)
                           (recur i (+ i 1))))))
-        register-arg (fn [n]
-          (let [arg (find-arg n)]
-            (if arg
-              arg.symbol
-              (let [symb (gen-arg n)]
-                (env.push {:n n :symbol symb})
-                symb))))
+        register-arg  (fn [n]
+                        (let [arg (find-arg n)]
+                          (if arg
+                            arg.symbol
+                            (let [symb (gen-arg n)]
+                              (env.push {:n n :symbol symb})
+                              symb))))
+        append-accessor (fn [left right] (symbol (+ left.name right.name)))
+        handle-accessor (fn [n]
+                          (if (== (buffer.lookahead 1) ".")
+                            (append-accessor (register-arg n) (reader.read buffer))
+                            (register-arg n)))
         ch (buffer.lookahead 1)]
     (cond
       (or (reader.isWhitespace ch)
@@ -421,41 +426,26 @@
         (register-arg 1)
 
       (== ch ".")
-        (let [root (register-arg 1)
-              symb (reader.read buffer)]
-          (symbol (+ root.name symb.name)))
+        (append-accessor (register-arg 1) (reader.read buffer))
+
+      (== ch "&")
+        (do (buffer.read1)
+            (handle-accessor -1))
 
       (reader.isDigit ch)
-        (do
-          (var n (buffer.read1))
-          (loop [state (buffer.save)
-                 ch (buffer.read1)]
-            (if (reader.isDigit ch)
-              (recur n (+ n ch)
-                     state (buffer.save)
-                     ch (buffer.read1))
-              (buffer.restore state)))
-
-          (set! n (parseFloat n))
-
-          (if (== (buffer.lookahead 1) ".")
-            (symbol (+ (get (register-arg n) "name")
-                       (get (reader.read buffer) "name")))
-            (register-arg n)))
+        (loop [n (buffer.read1)
+               state (buffer.save)
+               ch (buffer.read1)]
+          (if (reader.isDigit ch)
+            (recur n (+ n ch)
+                   state (buffer.save)
+                   ch (buffer.read1))
+            (do
+              (buffer.restore state)
+              (handle-accessor (parseFloat n)))))
       :else
-        (let [n (reader.read buffer)]
-          (cond
-            (and (symbol? n) (== n.name "&"))
-              (if (== (buffer.lookahead 1) ".")
-                (symbol (+ (get (register-arg -1) "name")
-                           (get (reader.read buffer) "name")))
-                (register-arg -1))
-            (== (not== (type n) "number")
-              (throw
-                (+ "arg literal must be %, %& or %n " (JSON.stringify (buffer.getPos))))
-            :else
-              (register-arg n)))))
-    ))
+        (throw (+ "arg literal must be %, %& or %n " (JSON.stringify (buffer.getPos))))
+    )))
 
 (def ^:reader-macro reader-_LPAREN_
   (fn [reader buffer]

@@ -2647,7 +2647,6 @@ function walkProgramTree (handler, node) {
 
       if (Array.isArray(node)) {
         new_node = node.map(selfApp);
-        new_node.type = node.type;
       } else if (typeof node == 'object') {
         new_node = {};
         for (k in node) {

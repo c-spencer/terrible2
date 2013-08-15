@@ -441,7 +441,20 @@
           (if (== (buffer.lookahead 1) ".")
             (symbol (+ (get (register-arg n) "name")
                        (get (reader.read buffer) "name")))
-            (register-arg n))))
+            (register-arg n)))
+      :else
+        (let [n (reader.read buffer)]
+          (cond
+            (and (symbol? n) (== n.name "&"))
+              (if (== (buffer.lookahead 1) ".")
+                (symbol (+ (get (register-arg -1) "name")
+                           (get (reader.read buffer) "name")))
+                (register-arg -1))
+            (== (not== (type n) "number")
+              (throw
+                (+ "arg literal must be %, %& or %n " (JSON.stringify (buffer.getPos))))
+            :else
+              (register-arg n)))))
     ))
 
 (def ^:reader-macro reader-_LPAREN_
@@ -462,8 +475,8 @@
               :else       (> a.n b.n))))
 
       (var rest-arg
-        (if (== (get env (- env.length 1)) -1)
-          (.symbol (env.pop))
+        (if (== (get (get env (- env.length 1)) "n") -1)
+          (get (env.pop) "symbol")
           nil))
 
       ; assign args

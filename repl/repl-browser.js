@@ -26,31 +26,29 @@ function Symbol(name) {
 
   this.parse = function () { return Symbol_parse(name); };
 }
+var symbol_regex = /^([^\.\/][^\/]*)\/([^\.]+(?:\.[^\.]+)*)$|(\.?[^\.]+(?:\.[^\.]+)*)$/;
 var Symbol_parse = function (symbol_name) {
-  var name = symbol_name,
-      ns = "",
-      root = "",
-      parts = [],
-      ns_parts = name.split(/\//);
-
-  if (ns_parts.length > 1 && ns_parts[0] !== "") {
-    name = ns_parts.slice(1).join("/");
-    if (name === "") {
-      name = symbol_name;
+  var match = symbol_name.match(symbol_regex);
+  if (match) {
+    if (match[1]) {
+      var parts = match[2].split(/\./g);
+      return {
+        namespace: match[1],
+        root: parts[0],
+        parts: parts.slice(1)
+      }
     } else {
-      ns = ns_parts[0];
+      var parts = match[3].split(/\./g);
+      return {
+        namespace: "",
+        root: parts[0],
+        parts: parts.slice(1)
+      }
     }
-  }
-
-  if (name.match(/^\.+$/)) {
-    root = name;
   } else {
-    var name_parts = name.split(/\./);
-    root = name_parts[0];
-    parts = name_parts.slice(1);
+    console.log("Couldn't match symbol regex", symbol_name);
+    throw "Couldn't match symbol regex" + symbol_name;
   }
-
-  return { namespace: ns, root: root, parts: parts };
 };
 exports.symbol = Symbol;
 
@@ -75,20 +73,27 @@ var parser = require('./parser');
 var core = require('./core');
 var fs = require('fs');
 
-var core_js = "// Core Structures\n\n// Vector == Array\n// Map == Object\n// Literals == Number / String\n\nfunction List(values) {\n  var that = this;\n  this.values = values;\n\n  this.concat = function (arg) {\n    that.values = that.values.concat(arg);\n    return that;\n  };\n\n  this.push = function () {\n    that.values.push.apply(that.values, arguments);\n    return that;\n  };\n}\nexports.list = List;\n\nfunction Symbol(name) {\n  this.name = name;\n\n  this.parse = function () { return Symbol_parse(name); };\n}\nvar Symbol_parse = function (symbol_name) {\n  var name = symbol_name,\n      ns = \"\",\n      root = \"\",\n      parts = [],\n      ns_parts = name.split(/\\//);\n\n  if (ns_parts.length > 1 && ns_parts[0] !== \"\") {\n    name = ns_parts.slice(1).join(\"/\");\n    if (name === \"\") {\n      name = symbol_name;\n    } else {\n      ns = ns_parts[0];\n    }\n  }\n\n  if (name.match(/^\\.+$/)) {\n    root = name;\n  } else {\n    var name_parts = name.split(/\\./);\n    root = name_parts[0];\n    parts = name_parts.slice(1);\n  }\n\n  return { namespace: ns, root: root, parts: parts };\n};\nexports.symbol = Symbol;\n\nfunction Keyword (name) {\n  this.name = name;\n}\nexports.keyword = Keyword;\n\nvar gensym_counter = 0;\nfunction gensym (root) {\n  return new Symbol(\"gensym$\" + root + \"$\" + (++gensym_counter));\n}\nexports.gensym = gensym;\n".replace(/exports[^\n]+\n/g, '');
+var core_js = "// Core Structures\n\n// Vector == Array\n// Map == Object\n// Literals == Number / String\n\nfunction List(values) {\n  var that = this;\n  this.values = values;\n\n  this.concat = function (arg) {\n    that.values = that.values.concat(arg);\n    return that;\n  };\n\n  this.push = function () {\n    that.values.push.apply(that.values, arguments);\n    return that;\n  };\n}\nexports.list = List;\n\nfunction Symbol(name) {\n  this.name = name;\n\n  this.parse = function () { return Symbol_parse(name); };\n}\nvar symbol_regex = /^([^\\.\\/][^\\/]*)\\/([^\\.]+(?:\\.[^\\.]+)*)$|(\\.?[^\\.]+(?:\\.[^\\.]+)*)$/;\nvar Symbol_parse = function (symbol_name) {\n  var match = symbol_name.match(symbol_regex);\n  if (match) {\n    if (match[1]) {\n      var parts = match[2].split(/\\./g);\n      return {\n        namespace: match[1],\n        root: parts[0],\n        parts: parts.slice(1)\n      }\n    } else {\n      var parts = match[3].split(/\\./g);\n      return {\n        namespace: \"\",\n        root: parts[0],\n        parts: parts.slice(1)\n      }\n    }\n  } else {\n    console.log(\"Couldn't match symbol regex\", symbol_name);\n    throw \"Couldn't match symbol regex\" + symbol_name;\n  }\n};\nexports.symbol = Symbol;\n\nfunction Keyword (name) {\n  this.name = name;\n}\nexports.keyword = Keyword;\n\nvar gensym_counter = 0;\nfunction gensym (root) {\n  return new Symbol(\"gensym$\" + root + \"$\" + (++gensym_counter));\n}\nexports.gensym = gensym;\n".replace(/exports[^\n]+\n/g, '');
 
 function BrowserLoader (root) {
   this.root = root;
 };
 
+var path_cache = {};
+
 BrowserLoader.prototype.loadPath = function (path) {
+  if (path_cache[path]) {
+    return path_cache[path];
+  }
   var request = new XMLHttpRequest();
   request.open('GET', this.root + "/" + path, false);
   request.send(null);
 
   if (request.status == 200) {
+    path_cache[path] = request.responseText;
     return request.responseText;
   } else {
+    path_cache[path] = null;
     return null;
   }
 }
@@ -205,6 +210,42 @@ Environment.prototype.evalSession = function () {
   }
 };
 
+Environment.prototype.evaluateInNamespace = function (terr_ast, namespace) {
+  var env = this;
+
+  var ENV = {
+    get: function (namespace, name) {
+      if (namespace === null) {
+        return env.scope.resolve(name).value;
+      }
+      return env.findNamespace(namespace).scope.resolve(name).value;
+    },
+    set: function (namespace, name, value) {
+      if (namespace === null) {
+        env.scope.update(name, { value: value });
+      } else {
+        env.findNamespace(namespace).scope.update(name, { value: value });
+      }
+      return value;
+    }
+  };
+
+  // TODO: better way of doing this
+  Terr.INTERACTIVE = true;
+  var compile_nodes = Terr.CompileToJS(terr_ast, "return");
+
+  var js = codegen.generate(JS.Program(compile_nodes));
+
+  namespace.ast_nodes = namespace.ast_nodes.concat(terr_ast);
+
+  try {
+    return new Function('$ENV', js)(ENV);
+  } catch (exc) {
+    console.log(exc, js);
+    throw exc;
+  };
+}
+
 Environment.prototype.evalText = function (session, text, error_cb) {
   var that = this;
 
@@ -221,16 +262,22 @@ Environment.prototype.evalText = function (session, text, error_cb) {
     }
 
     try {
-      var processed = parser.process(form, that, false);
+      var processed = parser.process(form, that, that.current_namespace, false);
+
+      for (var ns_name in processed.scope_map) {
+        that.findNamespace(ns_name).scope = processed.scope_map[ns_name];
+      }
+      that.current_namespace = processed.namespace;
+
+      var value = that.evaluateInNamespace(processed.ast, that.current_namespace);
+
+      processed.value = value;
       processed.form = form;
       processed.text = form.$text;
 
       var nodes = processed.ast;
 
       results.push(processed);
-
-      that.current_namespace.ast_nodes =
-        that.current_namespace.ast_nodes.concat(nodes);
     } catch (exception) {
       if (error_cb) {
         error_cb(form, form.$text, exception);
@@ -547,7 +594,38 @@ Scope.prototype.exports = function () {
   }).map(function(k) {
     return {name: k, data: lf[k]};
   });
+};
+
+function extend(left, right, transform) {
+  left = left || {};
+  for (var k in right) {
+    if (right.hasOwnProperty(k)) {
+      if (transform) {
+        left[k] = transform(right[k]);
+      } else {
+        left[k] = right[k];
+      }
+    }
+  }
+  return left;
 }
+
+// TODO: Really inefficient, especially on larger scopes. Should do something smarter.
+Scope.prototype.clone = function () {
+  var new_logical = extend({}, this.logical_frame, function (frame_entry) {
+    return extend({}, frame_entry);
+  });
+
+  var new_js = extend({}, this.js_frame, function (frame_entry) {
+    return extend({}, frame_entry);
+  });
+
+  var copied_scope = new Scope(this.parent, new_js);
+  copied_scope.logical_frame = new_logical;
+  copied_scope.ns_references = this.ns_references.slice(0);
+  copied_scope.top_level = this.top_level;
+  return copied_scope;
+};
 
 // Namespaces
 
@@ -630,27 +708,35 @@ var reserved_words = ['break', 'do', 'instanceof', 'typeof', 'case', 'else', 'ne
                       'const', 'export', 'import', 'implements', 'let', 'private', 'public',
                       'yield', 'interface', 'package', 'protected', 'static'];
 
+var munged_symbols = {
+  ":": "COLON",   "+": "PLUS",      ">": "GT",
+  "<": "LT",      "=": "EQ",        "~": "TILDE",
+  "!": "BANG",    "@": "CIRCA",     "#": "HASH",
+  "'": "QUOTE",   '"': "DQUOTE",    "%": "PERCENT",
+  "^": "CARET",   "&": "AMPERSAND", "*": "STAR",
+  "|": "BAR",     "{": "LBRACE",    "}": "RBRACE",
+  "[": "LBRACK",  "]": "RBRACK",    "/": "SLASH",
+  "\\": "BSLASH", "?": "QMARK",     ".": "DOT",
+  "(": "LPAREN",  ")": "RPAREN"
+};
+
+var mungeRegex = RegExp("[" + Object.keys(munged_symbols).map(function (k) {
+  return "\\" + k;
+}).join("|") + "]", "g");
+
+var reservedRegex = RegExp("^(" + reserved_words.join("|") + ")$", "g");
+
 function mungeSymbol (str) {
-  return str.replace(/-/g, '_')
-    .replace(/\:/g, "_COLON_") .replace(/\+/g, "_PLUS_")     .replace(/\>/g, "_GT_")
-    .replace(/\</g, "_LT_")    .replace(/\=/g, "_EQ_")       .replace(/\~/g, "_TILDE_")
-    .replace(/\!/g, "_BANG_")  .replace(/\@/g, "_CIRCA_")    .replace(/\#/g, "_HASH_")
-    .replace(/\\'/g, "_QUOTE_").replace(/\"/g, "_DQUOTE_")   .replace(/\%/g, "_PERCENT_")
-    .replace(/\^/g, "_CARET_") .replace(/\&/g, "_AMPERSAND_").replace(/\*/g, "_STAR_")
-    .replace(/\|/g, "_BAR_")   .replace(/\{/g, "_LBRACE_")   .replace(/\}/g, "_RBRACE_")
-    .replace(/\[/g, "_LBRACK_").replace(/\]/g, "_RBRACK_")   .replace(/\//g, "_SLASH_")
-    .replace(/\\/g, "_BSLASH_").replace(/\?/g, "_QMARK_")    .replace(/\./g, "_DOT_")
-    .replace(/\(/g, "_LPAREN_").replace(/\)/g, "_RPAREN_")
-    .replace(RegExp("^(" + reserved_words.join("|") + ")$"), function (match) {
-      return match + "_";
-    });
+  return str.replace(/\-/g, '_')
+            .replace(mungeRegex, function (m) { return "_" + munged_symbols[m] + "_"; })
+            .replace(reservedRegex, function (match) { return match + "_"; });
 }
 
 builtins = {
   "var": function (opts) {
     var env = opts.env,
         walker = opts.walker(env),
-        ns = env.env.current_namespace.name,
+        ns = env.namespace.name,
         munged_ns = mungeSymbol(ns.replace(/\./g, '$')) + "$",
         decls = [],
         inputs = slice(arguments, 1);
@@ -823,7 +909,7 @@ builtins = {
   },
 
   "ns": function (opts, ns) {
-    opts.env.env.current_namespace = opts.env.env.getNamespace(ns.name, true);
+    opts.env.setNamespace(opts.env.env.getNamespace(ns.name, true));
 
     return Terr.Seq([]);
   },
@@ -880,37 +966,6 @@ builtins = {
     var result = opts.walker(opts.env.setQuoted(false))(arg);
 
     return Terr.Splice(result);
-  }
-}
-
-function compile_eval (node, env) {
-  var ENV = {
-    get: function (namespace, name) {
-      if (namespace === null) {
-        return env.scope.resolve(name).value;
-      }
-      return env.findNamespace(namespace).scope.resolve(name).value;
-    },
-    set: function (namespace, name, value) {
-      if (namespace === null) {
-        env.scope.update(name, { value: value });
-      } else {
-        env.findNamespace(namespace).scope.update(name, { value: value });
-      }
-      return value;
-    }
-  };
-
-  // TODO: better way od doing this
-  Terr.INTERACTIVE = true;
-  var compile_nodes = Terr.CompileToJS(node, "return");
-
-  var js = codegen.generate(JS.Program(compile_nodes));
-  try {
-    return new Function('$ENV', js)(ENV);
-  } catch (exc) {
-    console.log(exc, js);
-    throw exc;
   }
 }
 
@@ -1062,7 +1117,7 @@ walk_handlers = {
         }
       }
 
-      var ns = parsed_node.namespace || env.env.current_namespace.name;
+      var ns = parsed_node.namespace || env.namespace.name;
 
       return loc(node, Terr.Call(
         walker(new core.symbol('terrible.core/symbol')),
@@ -1083,7 +1138,7 @@ walk_handlers = {
 
     if (resolved.top_level) {
       var root = Terr.NamespaceGet(
-        parsed_node.namespace || env.env.current_namespace.name,
+        parsed_node.namespace || env.namespace.name,
         mungeSymbol(parsed_node.root),
         resolved.accessor.js_name
       );
@@ -1128,10 +1183,12 @@ walk_handler = function (node, walker, env) {
   }
 };
 
-function WalkingEnv(env, scope, quoted) {
+function WalkingEnv(env, namespace, scope, quoted, ns_scope_map) {
   this.env = env;
+  this.namespace = namespace;
   this.scope = scope;
   this.quoted = quoted;
+  this.ns_scope_map = ns_scope_map;
 }
 
 WalkingEnv.prototype.genID = function (root) {
@@ -1139,11 +1196,21 @@ WalkingEnv.prototype.genID = function (root) {
 };
 
 WalkingEnv.prototype.newScope = function (logical, js) {
-  return new WalkingEnv(this.env, this.scope.newScope(logical, js), this.quoted);
+  return new WalkingEnv(this.env, this.namespace,
+                        this.scope.newScope(logical, js), this.quoted, this.ns_scope_map);
 };
 
 WalkingEnv.prototype.setQuoted = function (quoted) {
-  return new WalkingEnv(this.env, this.scope.newScope(false, false), quoted);
+  return new WalkingEnv(this.env, this.namespace, this.scope.newScope(false, false), quoted, this.ns_scope_map);
+};
+
+WalkingEnv.prototype.setNamespace = function (namespace) {
+  if (!this.ns_scope_map[namespace.name]) {
+    this.ns_scope_map[namespace.name] = namespace.scope.clone();
+  }
+  this.namespace = namespace;
+  this.scope = this.ns_scope_map[namespace.name];
+  return this;
 };
 
 WalkingEnv.prototype.resolveSymbol = function (parsed_symbol) {
@@ -1157,7 +1224,7 @@ WalkingEnv.prototype.resolveSymbol = function (parsed_symbol) {
 
     parsed_symbol.namespace = ns.name;
 
-    this.env.current_namespace.requiresNamespace(ns);
+    this.namespace.requiresNamespace(ns);
     var scope = ns.scope;
   } else {
     var scope = this.scope;
@@ -1166,12 +1233,11 @@ WalkingEnv.prototype.resolveSymbol = function (parsed_symbol) {
   return scope.resolve(mungeSymbol(parsed_symbol.root));
 };
 
-exports.process = function (form, env, quoted) {
-  var walking_env = new WalkingEnv(env, env.current_namespace.scope, quoted),
-      ast = walker(walk_handler, form, walking_env),
-      value = compile_eval(ast, env);
+exports.process = function (form, env, namespace, quoted) {
+  var walking_env = new WalkingEnv(env, null, null, quoted, {}).setNamespace(namespace),
+      ast = walker(walk_handler, form, walking_env);
 
-  return { ast: ast, value: value };
+  return { ast: ast, namespace: walking_env.namespace, scope_map: walking_env.ns_scope_map };
 };
 exports.mungeSymbol = mungeSymbol;
 
@@ -7148,7 +7214,12 @@ function compileTerrible(text, callback) {
     clearTimeout(compile_timeout);
   }
   compile_timeout = setTimeout(function () {
-    callback(compileTerrible_(text))
+    // console.profile('compilation');
+    // console.time('compilation');
+    var compiled = compileTerrible_(text);
+    // console.timeEnd('compilation');
+    // console.profileEnd('compilation');
+    callback(compiled);
   }, 500);
 }
 

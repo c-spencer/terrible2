@@ -13,7 +13,12 @@ function compileTerrible(text, callback) {
     clearTimeout(compile_timeout);
   }
   compile_timeout = setTimeout(function () {
-    callback(compileTerrible_(text))
+    // console.profile('compilation');
+    // console.time('compilation');
+    var compiled = compileTerrible_(text);
+    // console.timeEnd('compilation');
+    // console.profileEnd('compilation');
+    callback(compiled);
   }, 500);
 }
 

@@ -1,274 +1,4 @@
 ;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
-exports.Identifier = function(name) {
-  return {
-    type: 'Identifier',
-    name: name
-  };
-};
-
-exports.VariableDeclaration = function(declarations) {
-  return {
-    type: 'VariableDeclaration',
-    declarations: declarations,
-    kind: 'var'
-  };
-};
-
-exports.VariableDeclarator = function(id, init) {
-  return {
-    type: 'VariableDeclarator',
-    id: id,
-    init: init
-  };
-};
-
-exports.NewExpression = function(callee, args) {
-  return {
-    type: 'NewExpression',
-    callee: callee,
-    "arguments": args
-  };
-};
-
-exports.ObjectExpression = function(properties) {
-  return {
-    type: 'ObjectExpression',
-    properties: properties
-  };
-};
-
-exports.Literal = function(value) {
-  return {
-    type: 'Literal',
-    value: value
-  };
-};
-
-exports.CallExpression = function(callee, args) {
-  return {
-    type: 'CallExpression',
-    callee: callee,
-    "arguments": args
-  };
-};
-
-exports.SequenceExpression = function(expressions) {
-  return {
-    type: 'SequenceExpression',
-    expressions: expressions
-  };
-};
-
-exports.Block = function(body) {
-  return {
-    type: 'BlockStatement',
-    body: body
-  };
-};
-
-exports.Return = function(arg) {
-  return {
-    type: 'ReturnStatement',
-    argument: arg
-  };
-};
-
-exports.ForStatement = function(init, test, update, body) {
-  return {
-    type: 'ForStatement',
-    init: init,
-    test: test,
-    update: update,
-    body: body
-  };
-};
-
-exports.ForInStatement = function (left, right, body) {
-  return {
-    type: 'ForInStatement',
-    left: left,
-    right: right,
-    body: body
-  };
-};
-
-exports.WhileStatement = function (test, body) {
-  return {
-    type: 'WhileStatement',
-    test: test,
-    body: body
-  };
-};
-
-exports.ContinueStatement = function (label) {
-  return {
-    type: 'ContinueStatement',
-    label: label
-  };
-};
-
-exports.BreakStatement = function (label) {
-  return {
-    type: 'ContinueStatement',
-    label: label
-  };
-};
-
-exports.LabeledStatement = function (label, body) {
-  return {
-    type: 'LabeledStatement',
-    label: label,
-    body: body
-  };
-};
-
-exports.FunctionExpression = function(params, body) {
-  return {
-    type: 'FunctionExpression',
-    params: params,
-    body: exports.Block(body)
-  };
-};
-
-exports.FunctionDeclaration = function(id, params, body) {
-  return {
-    id: id,
-    type: 'FunctionDeclaration',
-    params: params,
-    body: exports.Block(body)
-  };
-};
-
-exports.ExpressionStatement = function(expr) {
-  return {
-    type: 'ExpressionStatement',
-    expression: expr
-  };
-};
-
-exports.BinaryExpression = function(left, operator, right) {
-  return {
-    type: 'BinaryExpression',
-    operator: operator,
-    left: left,
-    right: right
-  };
-};
-
-exports.IfStatement = function(test, consequent, alternate) {
-  return {
-    type: 'IfStatement',
-    test: test,
-    consequent: consequent,
-    alternate: alternate
-  };
-};
-
-exports.ConditionalExpression = function (test, consequent, alternate) {
-  return {
-    type: 'ConditionalExpression',
-    test: test,
-    consequent: consequent,
-    alternate: alternate
-  };
-}
-
-exports.UnaryExpression = function(operator, argument) {
-  return {
-    type: 'UnaryExpression',
-    operator: operator,
-    argument: argument
-  };
-};
-
-exports.MemberExpression = function(object, property) {
-  return {
-    type: 'MemberExpression',
-    object: object,
-    property: property
-  };
-};
-
-exports.LogicalExpression = function(left, operator, right) {
-  return {
-    type: 'LogicalExpression',
-    operator: operator,
-    left: left,
-    right: right
-  };
-};
-
-exports.AssignmentExpression = function(left, operator, right) {
-  return {
-    type: 'AssignmentExpression',
-    operator: operator,
-    left: left,
-    right: right
-  };
-};
-
-exports.ArrayExpression = function(elements) {
-  return {
-    type: 'ArrayExpression',
-    elements: elements
-  };
-};
-
-exports.Program = function(body) {
-  return {
-    type: 'Program',
-    body: body
-  };
-};
-
-exports.MemberExpressionComputed = function (object, property) {
-  var computed;
-  if (property.type === 'Literal' && /^[a-zA-Z_$][0-9a-zA-Z_$]*$/.exec(property.value)) {
-    property = exports.Identifier(property.value);
-    computed = false;
-  } else {
-    computed = true;
-  }
-  return {
-    type: 'MemberExpression',
-    object: object,
-    property: property,
-    computed: computed
-  };
-};
-
-exports.ThrowStatement = function (arg) {
-  return {
-    type: 'ThrowStatement',
-    argument: arg
-  };
-};
-
-exports.TryStatement = function (block, handler, finalizer) {
-  return {
-    type: "TryStatement",
-    block: block,
-    handler: handler,
-    guardedHandlers: [],
-    finalizer: finalizer
-  };
-};
-
-exports.CatchClause = function (arg, block) {
-  return {
-    type: "CatchClause",
-    param: arg,
-    body: block
-  };
-};
-
-exports.This = function() {
-  return {
-    type: 'ThisExpression'
-  };
-};
-
-},{}],2:[function(require,module,exports){
 // Core Structures
 
 // Vector == Array
@@ -335,7 +65,7 @@ function gensym (root) {
 }
 exports.gensym = gensym;
 
-},{}],3:[function(require,module,exports){
+},{}],2:[function(require,module,exports){
 var Namespace = require('./namespace');
 var Terr = require('./terr-ast');
 var codegen = require('escodegen');
@@ -597,135 +327,64 @@ Environment.prototype.asJS = function (mode, entry_fn) {
 
 exports.Environment = Environment;
 
-},{"./core":2,"./js":4,"./namespace":5,"./parser":6,"./reader":7,"./terr-ast":8,"escodegen":10,"fs":23}],4:[function(require,module,exports){
-exports.Identifier = function(name) {
-  return {
-    type: 'Identifier',
-    name: name
-  };
-};
+},{"./core":1,"./js":3,"./namespace":4,"./parser":5,"./reader":6,"./terr-ast":7,"escodegen":9,"fs":22}],3:[function(require,module,exports){
+var nodes = {
+  Identifier: ['name'],
+  VariableDeclaration: {fields: ['declarations'], defaults: { kind: "var" }},
+  VariableDeclarator: ['id', 'init'],
+  NewExpression: ['callee', 'arguments'],
+  ObjectExpression: ['properties'],
+  Literal: ['value'],
+  CallExpression: ['callee', 'arguments'],
+  SequenceExpression: ['expressions'],
+  BlockStatement: ['body'],
+  ReturnStatement: ['argument'],
+  ForStatement: ['init', 'test', 'update', 'body'],
+  ForInStatement: ['left', 'right', 'body'],
+  WhileStatement: ['test', 'body'],
+  ContinueStatement: ['label'],
+  BreakStatement: ['label'],
+  LabeledStatement: ['label', 'body'],
+  ExpressionStatement: ['expression'],
+  BinaryExpression: ['left', 'operator', 'right'],
+  IfStatement: ['test', 'consequent', 'alternate'],
+  ConditionalExpression: ['test', 'consequent', 'alternate'],
+  UnaryExpression: ['operator', 'argument'],
+  MemberExpression: ['object', 'property'],
+  LogicalExpression: ['left', 'operator', 'right'],
+  AssignmentExpression: ['left', 'operator', 'right'],
+  ArrayExpression: ['elements'],
+  Program: ['body'],
+  ThrowStatement: ['argument'],
+  TryStatement: ['block', 'handler', 'finalizer'],
+  CatchClause: ['param', 'block'],
+  ThisExpression: []
+}
 
-exports.VariableDeclaration = function(declarations) {
-  return {
-    type: 'VariableDeclaration',
-    declarations: declarations,
-    kind: 'var'
-  };
-};
-
-exports.VariableDeclarator = function(id, init) {
-  return {
-    type: 'VariableDeclarator',
-    id: id,
-    init: init
-  };
-};
-
-exports.NewExpression = function(callee, args) {
-  return {
-    type: 'NewExpression',
-    callee: callee,
-    "arguments": args
-  };
-};
-
-exports.ObjectExpression = function(properties) {
-  return {
-    type: 'ObjectExpression',
-    properties: properties
-  };
-};
-
-exports.Literal = function(value) {
-  return {
-    type: 'Literal',
-    value: value
-  };
-};
-
-exports.CallExpression = function(callee, args) {
-  return {
-    type: 'CallExpression',
-    callee: callee,
-    "arguments": args
-  };
-};
-
-exports.SequenceExpression = function(expressions) {
-  return {
-    type: 'SequenceExpression',
-    expressions: expressions
-  };
-};
-
-exports.Block = function(body) {
-  return {
-    type: 'BlockStatement',
-    body: body
-  };
-};
-
-exports.Return = function(arg) {
-  return {
-    type: 'ReturnStatement',
-    argument: arg
-  };
-};
-
-exports.ForStatement = function(init, test, update, body) {
-  return {
-    type: 'ForStatement',
-    init: init,
-    test: test,
-    update: update,
-    body: body
-  };
-};
-
-exports.ForInStatement = function (left, right, body) {
-  return {
-    type: 'ForInStatement',
-    left: left,
-    right: right,
-    body: body
-  };
-};
-
-exports.WhileStatement = function (test, body) {
-  return {
-    type: 'WhileStatement',
-    test: test,
-    body: body
-  };
-};
-
-exports.ContinueStatement = function (label) {
-  return {
-    type: 'ContinueStatement',
-    label: label
-  };
-};
-
-exports.BreakStatement = function (label) {
-  return {
-    type: 'ContinueStatement',
-    label: label
-  };
-};
-
-exports.LabeledStatement = function (label, body) {
-  return {
-    type: 'LabeledStatement',
-    label: label,
-    body: body
-  };
-};
+for (var type in nodes) {
+  (function (type, node) {
+    if (Array.isArray(node)) {
+      var fields = node, defaults = {};
+    } else {
+      var fields = node.fields, defaults = node.defaults;
+    }
+    exports[type] = function () {
+      var o = { type: type };
+      var args = arguments;
+      for (var k in defaults) { o[k] = defaults[k]; }
+      fields.forEach(function (field, i) {
+        o[field] = args[i];
+      });
+      return o;
+    }
+  }(type, nodes[type]));
+}
 
 exports.FunctionExpression = function(params, body) {
   return {
     type: 'FunctionExpression',
     params: params,
-    body: exports.Block(body)
+    body: exports.BlockStatement(body)
   };
 };
 
@@ -734,89 +393,7 @@ exports.FunctionDeclaration = function(id, params, body) {
     id: id,
     type: 'FunctionDeclaration',
     params: params,
-    body: exports.Block(body)
-  };
-};
-
-exports.ExpressionStatement = function(expr) {
-  return {
-    type: 'ExpressionStatement',
-    expression: expr
-  };
-};
-
-exports.BinaryExpression = function(left, operator, right) {
-  return {
-    type: 'BinaryExpression',
-    operator: operator,
-    left: left,
-    right: right
-  };
-};
-
-exports.IfStatement = function(test, consequent, alternate) {
-  return {
-    type: 'IfStatement',
-    test: test,
-    consequent: consequent,
-    alternate: alternate
-  };
-};
-
-exports.ConditionalExpression = function (test, consequent, alternate) {
-  return {
-    type: 'ConditionalExpression',
-    test: test,
-    consequent: consequent,
-    alternate: alternate
-  };
-}
-
-exports.UnaryExpression = function(operator, argument) {
-  return {
-    type: 'UnaryExpression',
-    operator: operator,
-    argument: argument
-  };
-};
-
-exports.MemberExpression = function(object, property) {
-  return {
-    type: 'MemberExpression',
-    object: object,
-    property: property
-  };
-};
-
-exports.LogicalExpression = function(left, operator, right) {
-  return {
-    type: 'LogicalExpression',
-    operator: operator,
-    left: left,
-    right: right
-  };
-};
-
-exports.AssignmentExpression = function(left, operator, right) {
-  return {
-    type: 'AssignmentExpression',
-    operator: operator,
-    left: left,
-    right: right
-  };
-};
-
-exports.ArrayExpression = function(elements) {
-  return {
-    type: 'ArrayExpression',
-    elements: elements
-  };
-};
-
-exports.Program = function(body) {
-  return {
-    type: 'Program',
-    body: body
+    body: exports.BlockStatement(body)
   };
 };
 
@@ -836,38 +413,7 @@ exports.MemberExpressionComputed = function (object, property) {
   };
 };
 
-exports.ThrowStatement = function (arg) {
-  return {
-    type: 'ThrowStatement',
-    argument: arg
-  };
-};
-
-exports.TryStatement = function (block, handler, finalizer) {
-  return {
-    type: "TryStatement",
-    block: block,
-    handler: handler,
-    guardedHandlers: [],
-    finalizer: finalizer
-  };
-};
-
-exports.CatchClause = function (arg, block) {
-  return {
-    type: "CatchClause",
-    param: arg,
-    body: block
-  };
-};
-
-exports.This = function() {
-  return {
-    type: 'ThisExpression'
-  };
-};
-
-},{}],5:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 var JS = require('./js');
 var Terr = require('./terr-ast');
 
@@ -1055,7 +601,7 @@ Namespace.prototype.requiresNamespace = function (ns) {
 exports.Namespace = Namespace;
 exports.Scope = Scope;
 
-},{"./js":4,"./terr-ast":8}],6:[function(require,module,exports){
+},{"./js":3,"./terr-ast":7}],5:[function(require,module,exports){
 var walker = require('./walker')
 var core = require('./core')
 var JS = require('./js')
@@ -1629,7 +1175,7 @@ exports.process = function (form, env, quoted) {
 };
 exports.mungeSymbol = mungeSymbol;
 
-},{"./core":2,"./js":4,"./terr-ast":8,"./walker":9,"escodegen":10}],7:[function(require,module,exports){
+},{"./core":1,"./js":3,"./terr-ast":7,"./walker":8,"escodegen":9}],6:[function(require,module,exports){
 // A partial port and modification of the Clojure reader
 // https://github.com/clojure/clojure/blob/master/src/jvm/clojure/lang/LispReader.java
 
@@ -2066,8 +1612,8 @@ Reader.prototype.newReadSession = function () {
 exports.Reader = Reader;
 exports.Buffer = Buffer;
 
-},{"./core":2}],8:[function(require,module,exports){
-var JS = require('./JS');
+},{"./core":1}],7:[function(require,module,exports){
+var JS = require('./js');
 
 var Terr = exports;
 
@@ -2079,11 +1625,11 @@ function intoBlock (node, mode) {
     if (r.length == 1) {
       return r[0];
     } else {
-      return JS.Block(r);
+      return JS.BlockStatement(r);
     }
   } else {
     if (mode == "return") {
-      return JS.Return();
+      return JS.ReturnStatement();
     } else {
       return undefined;
     }
@@ -2122,7 +1668,7 @@ var compilers = {
             return [JS.ExpressionStatement(fn)];
           }
         } else if (mode == "return") {
-          return [JS.Return(fn)];
+          return [JS.ReturnStatement(fn)];
         } else if (mode == "expression") {
           return fn;
         }
@@ -2158,7 +1704,7 @@ var compilers = {
             dispatch_body.push(
               JS.IfStatement(
                 JS.BinaryExpression(args_len, ">=", JS.Literal(node.variadic)),
-                JS.Return(JS.CallExpression(
+                JS.ReturnStatement(JS.CallExpression(
                   JS.MemberExpressionComputed(
                     JS.MemberExpressionComputed(fndef, app_name),
                     JS.Literal("apply")
@@ -2171,7 +1717,7 @@ var compilers = {
             dispatch_body.push(
               JS.IfStatement(
                 JS.BinaryExpression(args_len, "==", JS.Literal(arity)),
-                JS.Return(JS.CallExpression(
+                JS.ReturnStatement(JS.CallExpression(
                   JS.MemberExpressionComputed(
                     JS.MemberExpressionComputed(fndef, app_name),
                     JS.Literal("call")
@@ -2198,12 +1744,12 @@ var compilers = {
         closure_body.unshift(dispatch_fn);
 
         if (mode == "return") {
-          closure_body.push(JS.Return(fndef));
+          closure_body.push(JS.ReturnStatement(fndef));
           return closure_body;
         } else if (mode == "statement") {
           return closure_body;
         } else {
-          closure_body.push(JS.Return(fndef));
+          closure_body.push(JS.ReturnStatement(fndef));
           return IIFE(closure_body);
         }
       }
@@ -2307,7 +1853,7 @@ var compilers = {
       } else if (mode == "statement") {
         return [decl];
       } else if (mode == "return") {
-        return [decl, JS.Return(symb)];
+        return [decl, JS.ReturnStatement(symb)];
       }
     }
   },
@@ -2350,12 +1896,12 @@ var compilers = {
       }
 
       var tryStatement = JS.TryStatement(
-        JS.Block(Terr.CompileToJS(node.body, sub_mode)),
+        JS.BlockStatement(Terr.CompileToJS(node.body, sub_mode)),
         JS.CatchClause(
           Terr.CompileToJS(node.catch_arg, "expression"),
-          JS.Block(Terr.CompileToJS(node.catch, sub_mode))
+          JS.BlockStatement(Terr.CompileToJS(node.catch, sub_mode))
         ),
-        node.finally ? JS.Block(Terr.CompileToJS(node.finally, "statement"))
+        node.finally ? JS.BlockStatement(Terr.CompileToJS(node.finally, "statement"))
                      : undefined
       )
 
@@ -2457,7 +2003,7 @@ var compilers = {
         throw "Return in expression position? Is this real?"
       }
       return [loc(node,
-                  JS.Return(Terr.CompileToJS(node.expression, "expression")))];
+                  JS.ReturnStatement(Terr.CompileToJS(node.expression, "expression")))];
     }
   },
 
@@ -2583,7 +2129,7 @@ function ExpressionToMode (node, mode) {
   if (mode == "statement") {
     return [JS.ExpressionStatement(node)];
   } else if (mode == "return") {
-    return [JS.Return(node)];
+    return [JS.ReturnStatement(node)];
   }
   return node;
 }
@@ -2592,7 +2138,7 @@ function StatementToMode (node, mode) {
   if (node == "expression") {
     return IIFE([node]);
   } else if (node == "return") {
-    return [JS.Return(IIFE([node]))];
+    return [JS.ReturnStatement(IIFE([node]))];
   } else {
     return [node];
   }
@@ -2630,7 +2176,7 @@ Terr.CompileToJS = function (ast, mode) {
   }
 }
 
-},{"./JS":1}],9:[function(require,module,exports){
+},{"./js":3}],8:[function(require,module,exports){
 function walkProgramTree (handler, node) {
   function walkTree () {
     var args = Array.prototype.slice.call(arguments);
@@ -2667,7 +2213,7 @@ function walkProgramTree (handler, node) {
 
 module.exports = walkProgramTree;
 
-},{}],10:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 var global=self;/*
   Copyright (C) 2012-2013 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2012-2013 Michael Ficarra <escodegen.copyright@michael.ficarra.me>
@@ -4980,7 +4526,7 @@ var global=self;/*
 }());
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{"./package.json":22,"estraverse":11,"source-map":12}],11:[function(require,module,exports){
+},{"./package.json":21,"estraverse":10,"source-map":11}],10:[function(require,module,exports){
 /*
   Copyright (C) 2012 Yusuke Suzuki <utatane.tea@gmail.com>
   Copyright (C) 2012 Ariya Hidayat <ariya.hidayat@gmail.com>
@@ -5297,7 +4843,7 @@ var global=self;/*
 }));
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{}],12:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 /*
  * Copyright 2009-2011 Mozilla Foundation and contributors
  * Licensed under the New BSD license. See LICENSE.txt or:
@@ -5307,7 +4853,7 @@ exports.SourceMapGenerator = require('./source-map/source-map-generator').Source
 exports.SourceMapConsumer = require('./source-map/source-map-consumer').SourceMapConsumer;
 exports.SourceNode = require('./source-map/source-node').SourceNode;
 
-},{"./source-map/source-map-consumer":17,"./source-map/source-map-generator":18,"./source-map/source-node":19}],13:[function(require,module,exports){
+},{"./source-map/source-map-consumer":16,"./source-map/source-map-generator":17,"./source-map/source-node":18}],12:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -5405,7 +4951,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./util":20,"amdefine":21}],14:[function(require,module,exports){
+},{"./util":19,"amdefine":20}],13:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -5551,7 +5097,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./base64":15,"amdefine":21}],15:[function(require,module,exports){
+},{"./base64":14,"amdefine":20}],14:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -5595,7 +5141,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":21}],16:[function(require,module,exports){
+},{"amdefine":20}],15:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -5678,7 +5224,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":21}],17:[function(require,module,exports){
+},{"amdefine":20}],16:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -6121,7 +5667,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./array-set":13,"./base64-vlq":14,"./binary-search":16,"./util":20,"amdefine":21}],18:[function(require,module,exports){
+},{"./array-set":12,"./base64-vlq":13,"./binary-search":15,"./util":19,"amdefine":20}],17:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -6504,7 +6050,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./array-set":13,"./base64-vlq":14,"./util":20,"amdefine":21}],19:[function(require,module,exports){
+},{"./array-set":12,"./base64-vlq":13,"./util":19,"amdefine":20}],18:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -6859,7 +6405,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./source-map-generator":18,"./util":20,"amdefine":21}],20:[function(require,module,exports){
+},{"./source-map-generator":17,"./util":19,"amdefine":20}],19:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -6978,7 +6524,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":21}],21:[function(require,module,exports){
+},{"amdefine":20}],20:[function(require,module,exports){
 var process=require("__browserify_process"),__filename="/../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js";/** vim: et:ts=4:sw=4:sts=4
  * @license amdefine 0.0.5 Copyright (c) 2011, The Dojo Foundation All Rights Reserved.
  * Available via the MIT or new BSD license.
@@ -7279,7 +6825,7 @@ function amdefine(module, require) {
 
 module.exports = amdefine;
 
-},{"__browserify_process":25,"path":24}],22:[function(require,module,exports){
+},{"__browserify_process":24,"path":23}],21:[function(require,module,exports){
 module.exports=module.exports={
   "name": "escodegen",
   "description": "ECMAScript code generator",
@@ -7350,10 +6896,10 @@ module.exports=module.exports={
   "_resolved": "https://registry.npmjs.org/escodegen/-/escodegen-0.0.24.tgz"
 }
 
-},{}],23:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 // nothing to see here... no file methods for the browser
 
-},{}],24:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
 var process=require("__browserify_process");function filter (xs, fn) {
     var res = [];
     for (var i = 0; i < xs.length; i++) {
@@ -7532,7 +7078,7 @@ exports.relative = function(from, to) {
 
 exports.sep = '/';
 
-},{"__browserify_process":25}],25:[function(require,module,exports){
+},{"__browserify_process":24}],24:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -7586,7 +7132,7 @@ process.chdir = function (dir) {
     throw new Error('process.chdir is not supported');
 };
 
-},{}],26:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 var Environment = require('../lib/environment').Environment;
 
 // INPUT OUTPUT
@@ -7760,5 +7306,5 @@ document.getElementById('io-toggle').addEventListener('click', function () {
   document.querySelector('body').setAttribute('class', 'input-output');
 });
 
-},{"../lib/environment":3}]},{},[26])
+},{"../lib/environment":2}]},{},[25])
 ;

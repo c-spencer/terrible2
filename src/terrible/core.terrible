@@ -372,6 +372,7 @@
 
 (def ^:reader-macro reader-/
   (fn [reader buffer]
+    (buffer.read1) ; consume the starting `/`
     (loop [str ""
            flags ""
            ch (buffer.read1)
@@ -379,10 +380,13 @@
       (cond
         (not ch)      (new RegExp str flags)
         (== ch "/")   (do
-                        (loop [ch (buffer.read1)]
-                          (when (.match ch flag_regex) (recur flags (+ flags ch)
-                                                              ch (buffer.read1))))
-                        (buffer.unread ch)
+                        (loop [state (buffer.save)
+                               ch (buffer.read1)]
+                          (if (.match ch flag_regex)
+                              (recur flags (+ flags ch)
+                                     state (buffer.save)
+                                     ch (buffer.read1))
+                              (buffer.restore state)))
                         (recur ch nil))
         (== ch "\\")  (recur str (+ str ch (buffer.read1))
                              ch (buffer.read1))

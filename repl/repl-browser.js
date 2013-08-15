@@ -1635,8 +1635,6 @@ var core = require('./core')
 
 // Buffer
 
-function EOFError () {}
-
 function Buffer (string) {
   this.string = string;
   this.pos = 0;
@@ -1644,13 +1642,15 @@ function Buffer (string) {
   this.col = 0;
 }
 
+Buffer.EOF = function () {}
+
 Buffer.prototype.read1 = function () {
   if (this.pos === this.string.length) {
     ++this.pos;
     ++this.col;
     return " ";
   } else if (this.pos > this.string.length) {
-    throw new EOFError();
+    throw new Buffer.EOF();
   } else {
     var ch = this.string[this.pos];
     ++this.pos;
@@ -1684,10 +1684,6 @@ Buffer.prototype.restore = function (d) {
 
 Buffer.prototype.lookahead = function (n) {
   return this.string.substring(this.pos, this.pos + n);
-}
-
-Buffer.prototype.unread = function (str) {
-  this.pos -= str.length;
 }
 
 Buffer.prototype.append = function (str) {
@@ -1844,7 +1840,7 @@ function stringReader (buffer, quote) {
 }
 
 dispatchReader = function (buffer, hash) {
-  var ch = buffer.read1();
+  var ch = buffer.lookahead(1);
   if (this.dispatch_macros[ch]) {
     return this.dispatch_macros[ch].call(this, buffer, ch);
   } else {
@@ -1937,8 +1933,6 @@ argReader = function (buffer, percent) {
 }
 
 fnReader = function (buffer, openparen) {
-  buffer.unread(openparen);
-
   var originalENV = this.ARG_ENV;
 
   this.ARG_ENV = [];
@@ -2178,7 +2172,7 @@ Reader.prototype.newReadSession = function () {
           buffer_state = buffer.save();
         }
       } catch (exception) {
-        if (exception instanceof EOFError) {
+        if (exception instanceof Buffer.EOF) {
           buffer.restore(buffer_state);
           return;
         } else {
@@ -7404,7 +7398,7 @@ function amdefine(module, require) {
 module.exports = amdefine;
 
 },{"__browserify_process":25,"path":24}],22:[function(require,module,exports){
-module.exports={
+module.exports=module.exports={
   "name": "escodegen",
   "description": "ECMAScript code generator",
   "homepage": "http://github.com/Constellation/escodegen.html",

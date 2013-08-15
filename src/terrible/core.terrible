@@ -295,6 +295,11 @@
 (defmacro loop [bindings & body]
   `(let ~bindings (loop-body ~@body)))
 
+(defmacro loop-while [bindings condition & body]
+  (if (list? bindings)
+    `(loop [] (when ~bindings ~condition ~@body))
+    `(loop ~bindings (when ~condition ~@body))))
+
 (defmacro -> [left app & apps]
   (cond
     (not app)       left
@@ -402,11 +407,10 @@
   (let [reader this
         env reader.ARG_ENV
         find-arg  (fn [n]
-                    (loop [i 0]
-                      (when (< i env.length)
-                        (if (== (get (get env i) "n") n)
-                          (get env i)
-                          (recur i (+ i 1))))))
+                    (loop-while [i 0] (< i env.length)
+                      (if (== (get (get env i) "n") n)
+                        (get env i)
+                        (recur i (+ i 1)))))
         register-arg  (fn [n]
                         (let [arg (find-arg n)]
                           (if arg

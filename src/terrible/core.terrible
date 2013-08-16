@@ -158,6 +158,36 @@
         `(if ~t ~v (cond ~@cases))
         `(if ~t ~v)))))
 
+(terr-macro js-for [opts init test update & body]
+  (var env (opts.env.newScope true false)
+       walker (opts.walker env))
+
+  (opts.Terr.For
+    (walker `(var ~@init))
+    (walker test)
+    (walker update)
+    (opts.Terr.Seq (body.map walker))))
+
+(terr-macro js-for-in [opts left right & body]
+  (var env (opts.env.newScope true false)
+       walker (opts.walker env))
+
+  (if (not (symbol? left))
+    (throw "Left binding in js-for-in must be a symbol."))
+
+  (opts.Terr.ForIn
+    (walker `(var ~left))
+    (walker right)
+    (opts.Terr.Seq (body.map walker))))
+
+(terr-macro js-while [opts test & body]
+  (var env (opts.env.newScope true false)
+       walker (opts.walker env))
+
+  (opts.Terr.While
+    (walker test)
+    (opts.Terr.Seq (body.map walker))))
+
 (def ^:macro destructure
   (lambda [left right]
     (cond (symbol? left) `(var ~left ~right)
@@ -178,6 +208,12 @@
                         (bindings.push `(destructure ~l (get ~right ~i)))
                         (recur i (+ i 1))))
                     )))
+              `(do-noscope ~@bindings))
+          (object? left)
+            (do
+              (var bindings [])
+              (js-for-in k left
+                (bindings.push `(destructure ~(get left k) (get ~right ~k))))
               `(do-noscope ~@bindings))
           :else (throw "Unsupported destructuring form"))))
 
@@ -239,36 +275,6 @@
         (throw (+ "Couldn't resolve namespace `" symb.name "`")))))
 
   (opts.Terr.Seq []))
-
-(terr-macro js-for [opts init test update & body]
-  (var env (opts.env.newScope true false)
-       walker (opts.walker env))
-
-  (opts.Terr.For
-    (walker `(var ~@init))
-    (walker test)
-    (walker update)
-    (opts.Terr.Seq (body.map walker))))
-
-(terr-macro js-for-in [opts left right & body]
-  (var env (opts.env.newScope true false)
-       walker (opts.walker env))
-
-  (if (not (symbol? left))
-    (throw "Left binding in js-for-in must be a symbol."))
-
-  (opts.Terr.ForIn
-    (walker `(var ~left))
-    (walker right)
-    (opts.Terr.Seq (body.map walker))))
-
-(terr-macro js-while [opts test & body]
-  (var env (opts.env.newScope true false)
-       walker (opts.walker env))
-
-  (opts.Terr.While
-    (walker test)
-    (opts.Terr.Seq (body.map walker))))
 
 ; Core library
 
@@ -478,9 +484,10 @@
         (set! (get args (- arg.n 1)) arg.symbol)))
 
       ; fill in the gaps
-      (js-for [i 0] (< i args.length) (set! i (+ i 1))
+      (loop-while [i 0] (< i args.length)
         (when (not (get args i))
-          (set! (get args i) (gen-arg (+ i 1)))))
+          (set! (get args i) (gen-arg (+ i 1)))
+          (recur i (+ i 1))))
 
       (when rest-arg
         (args.push (symbol "&") rest-arg)))

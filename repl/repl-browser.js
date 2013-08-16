@@ -504,7 +504,7 @@ Scope.prototype.resolveNamespace = function (alias) {
   for (var i = 0; i < this.ns_references.length; ++i) {
     var ref = this.ns_references[i];
 
-    if (ref.alias === alias || ref.name === alias) {
+    if (ref.alias === alias || ref.namespace === alias) {
       return ref.ns;
     }
   }
@@ -512,38 +512,13 @@ Scope.prototype.resolveNamespace = function (alias) {
   return this.parent? this.parent.resolveNamespace(alias) : false;
 }
 
+// False positives, but better than false negatives.
 Scope.prototype.nameClash = function (name) {
-  var keys = Object.keys(this.js_frame);
-  for (var i = 0; i < keys.length; ++i) {
-    if (keys[i] === name) return true;
-  }
+  return this.jsScoped(name);
 }
 
 Scope.prototype.jsScoped = function (name) {
   return this.js_frame[name] != null
-}
-
-Scope.prototype.jsScope = function (predicate) {
-  var logical_frame = this.logical_frame;
-  var this_map = {};
-
-  Object.keys(logical_frame).filter(function (k) {
-    if (predicate(logical_frame[k])) {
-      this_map[k] = logical_frame[k];
-    }
-  });
-
-  if (this.parent) {
-    var upper_map = this.parent.jsScope(predicate);
-
-    Object.keys(this_map).forEach(function (k) {
-      upper_map[k] = this_map[k];
-    });
-
-    return upper_map;
-  } else {
-    return this_map;
-  }
 }
 
 Scope.prototype.logicalScoped = function (name) {
@@ -566,7 +541,7 @@ Scope.prototype.expose = function (name, value) {
     accessor: Terr.NamespaceGet(null, name, name),
     value: value,
     top_level: true,
-    metadata: {}
+    metadata: { private: true }
   };
 };
 
@@ -581,9 +556,7 @@ Scope.prototype.refer = function (namespace, alias, ns) {
 
 Scope.prototype.exports = function () {
   var lf = this.logical_frame;
-  return Object.keys(lf).filter(function (k) {
-    return !lf[k].metadata.private;
-  }).map(function(k) {
+  return Object.keys(lf).map(function(k) {
     return {name: k, data: lf[k]};
   });
 };
@@ -632,7 +605,7 @@ function Namespace (name, scope) {
 
 Namespace.prototype.exportsMap = function () {
   return this.scope.exports().filter(function (exported) {
-    if (exported.data.value && exported.data.value.$macro) {
+    if (exported.data.metadata['private'] || exported.data.metadata['macro']) {
       return false;
     } else {
       return true;
@@ -650,23 +623,6 @@ Namespace.prototype.requiresNamespace = function (ns) {
     this.dependent_namespaces.push(ns);
   }
 }
-
-// var env = new Namespace();
-// env.evalFile('jsbench.terr');
-// env.evalFile('core.terr');
-// env.evalText('(defn f ([a] a) ([a b] b) ([a & b] b)) (f 5) (f 5 6) (f 5 6 7)');
-// env.evalText('(var a (fn ([a] a) ([a b] b)))');
-// env.evalText('(console.log (f 6 7))');
-// env.evalText("(var m {:a #({:a %.a}) :b (try m (catch [exc] false))})")
-// env.evalText("#({:a %.a})")
-// env.evalText("(ns terrible.test)");
-// env.evalText("(def f 2 3)");
-// env.evalText('(var b (do (try 7 (catch [my-val] my-val.message)) 7))')
-// env.evalText('(var my-var 6)')
-// env.evalText("(fn [a] (if (not 6) (return 6)) a)")
-// env.evalText("(if 6 7 (do 8 9))")
-// env.evalText("(fn [] (if (do 6 7) 7 (do 8 9)))")
-// console.log(env.asJS())
 
 exports.Namespace = Namespace;
 exports.Scope = Scope;
@@ -760,12 +716,16 @@ builtins = {
         if (resolved.metadata.constant) { throw "Cannot reassign a constant " + munged_name }
 
         val = walker(val);
+
         env.scope.update(munged_name, {
           node: val,
           metadata: metadata
         });
 
         if (val && val.type == "Fn") {
+          if (metadata['no-return'])  {
+            val.$noReturn = true;
+          }
           val.id = Terr.Identifier(munged_name);
         }
 
@@ -1078,6 +1038,8 @@ walk_handlers = {
                             tail.map(walker)));
     } else if (head && isList(head)) {
       return _loc(Terr.Call(walker(head), tail.map(walker)));
+    } else if (head && isKeyword(head)) {
+      return _loc(Terr.Member(walker(tail[0]), Terr.Literal(head.name)));
     } else {
       throw "Cannot call `" + JSON.stringify(head) + "` as function."
     }

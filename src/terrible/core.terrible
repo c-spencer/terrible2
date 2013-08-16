@@ -303,10 +303,10 @@
 (defmacro -> [left app & apps]
   (cond
     (not app)       left
-    (keyword? app) `(-> (get ~left ~app.name) ~@apps)
+    (keyword? app) `(-> (~app ~left) ~@apps)
+    (symbol? app)  `(-> (~app ~left) ~@apps)
     (list? app)    `(-> (~app.values.0 ~left ~@(app.values.slice 1))
                         ~@apps)
-    (symbol? app)  `(-> (~app ~left) ~@apps)
     :else           (throw "Invalid -> target")))
 
 (defmacro defprotocol [symb & fns]

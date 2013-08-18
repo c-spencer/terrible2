@@ -135,13 +135,18 @@
 
 (terr-macro loop-body [opts options & body]
   (var previous-options opts.env.scope.js_frame.$loop
-       loop-id (opts.Terr.Identifier (get (gensym "loop") "name")))
+       loop-id (opts.Terr.Identifier (get (gensym "loop") "name"))
+       walker (opts.walker opts.env))
   (set! options.loop-id loop-id
         opts.env.scope.js_frame.$loop options)
-  (var mapped-body (body.map (opts.walker opts.env)))
+  (var mapped-body (body.map walker))
   (set! opts.env.scope.js_frame.$loop previous-options)
   (if options.$referenced
-    (opts.Terr.Loop loop-id (opts.Terr.Seq mapped-body))
+    (opts.Terr.Loop
+      loop-id
+      (opts.Terr.Seq mapped-body)
+      (walker options.test)
+      (walker options.update))
     (opts.Terr.Seq mapped-body)))
 
 (terr-macro recur [opts & args]
@@ -328,11 +333,10 @@
       (fn [body] `(let [~collect-symb []] ~(wrapper body) ~collect-symb))))
 
   (when loop-options.while
-    (var wrapper wrap-body)
-    (set! wrap-body (fn [body] [`(when ~loop-options.while ~@(wrapper body))])))
+    (set! opts.test loop-options.while))
 
   (when loop-options.update
-    (before-recur.push `(set! ~@loop-options.update)))
+    (set! opts.update `(set! ~@loop-options.update)))
 
   (when loop-options.let
     (var wrapper wrap-outer)

@@ -2076,12 +2076,14 @@ var compilers = {
   },
 
   Loop: {
-    fields: ['label', 'body'],
+    fields: ['label', 'body', 'test', 'update'],
     compile: function (node, mode) {
       var loop_statement = JS.LabeledStatement(
         Terr.CompileToJS(node.label, "expression"),
-        JS.WhileStatement(
-          JS.Literal(true),
+        JS.ForStatement(
+          undefined,
+          Terr.CompileToJS(node.test, "expression"),
+          Terr.CompileToJS(node.update, "expression"),
           intoBlock(node.body, "return")
         )
       );

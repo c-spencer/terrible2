@@ -64,9 +64,11 @@
     (opts#.Terr.Unary ~op ((opts#.walker opts#.env) arg#))))
 
 (binary-operator + "+")
+(binary-operator - "-")
+(binary-operator / "/")
+(binary-operator * "*")
 (binary-operator == "===")
 (binary-operator ==? "==")
-(binary-operator - "-")
 (binary-operator not== "!==")
 (binary-operator not==? "!=")
 (binary-operator or "||")
@@ -75,7 +77,6 @@
 (binary-operator >= ">=")
 (binary-operator < "<")
 (binary-operator <= "<=")
-(binary-operator / "/")
 (binary-operator instance? "instanceof")
 (binary-operator mod "%")
 
@@ -132,21 +133,28 @@
   (var walker (opts.walker opts.env))
   (opts.Terr.Member (walker target) (walker arg)))
 
-(terr-macro loop-body [opts & body]
-  (var previous-id opts.env.scope.js_frame.$loop
+(terr-macro loop-body [opts options & body]
+  (var previous-options opts.env.scope.js_frame.$loop
        loop-id (opts.Terr.Identifier (get (gensym "loop") "name")))
-  (set! opts.env.scope.js_frame.$loop loop-id)
+  (set! options.loop-id loop-id
+        opts.env.scope.js_frame.$loop options)
   (var mapped-body (body.map (opts.walker opts.env)))
-  (set! opts.env.scope.js_frame.$loop previous-id)
-  (if loop-id.$referenced
+  (set! opts.env.scope.js_frame.$loop previous-options)
+  (if options.$referenced
     (opts.Terr.Loop loop-id (opts.Terr.Seq mapped-body))
     (opts.Terr.Seq mapped-body)))
 
 (terr-macro recur [opts & args]
-  (if opts.env.scope.js_frame.$loop
-    (do (set! opts.env.scope.js_frame.$loop.$referenced true)
-        (opts.Terr.Seq [((opts.walker opts.env) `(set! ~@args))
-                        (opts.Terr.Continue opts.env.scope.js_frame.$loop)]))
+  (var loop-opts opts.env.scope.js_frame.$loop)
+  (if loop-opts
+    (do (var walker (opts.walker opts.env)
+             actions [])
+        (set! loop-opts.$referenced true)
+        (if loop-opts.before-recur
+          (set! actions (loop-opts.before-recur.map walker)))
+        (actions.push (walker `(set! ~@args))
+                      (opts.Terr.Continue loop-opts.loop-id))
+        (opts.Terr.Seq actions))
     (throw "Must call recur from a loop-body context.")))
 
 (def ^:macro cond
@@ -196,7 +204,7 @@
             (do
               (var bindings []
                    i 0)
-              (loop-body
+              (loop-body {}
                 (if (< i left.length)
                   (do
                     (var l (get left i))
@@ -236,8 +244,8 @@
   (lambda [& body]
     (var extract (lambda [v]
       (var fn-args (analyse-fn-args v.0))
-      `[~(get fn-args "formal") (loop-body ~@(get fn-args "destructure")
-                                           ~@(v.slice 1))]
+      `[~(get fn-args "formal") (loop-body {} ~@(get fn-args "destructure")
+                                              ~@(v.slice 1))]
     ))
     (if (list? body.0)
       `(lambda ~@(body.map (lambda [v] `(~@(extract v.values)))))
@@ -298,13 +306,44 @@
                               (destructure ~s let#)))))
   `(do ~@vars ~@body))
 
-(defmacro loop [bindings & body]
-  `(let ~bindings (loop-body ~@body)))
+(defmacro loop [& body]
+  (var opts {}
+       loop-options {}
+       wrap-body (fn [x] x)
+       wrap-outer (fn [x] x)
+       before-recur [])
+
+  (loop-body {}
+    (when (> body.length 1)
+      (destructure [option-kw option-value & new-body] body)
+      (when (keyword? option-kw)
+        (set! (get loop-options option-kw.name) option-value)
+        (recur body new-body))))
+
+  (when loop-options.collect
+    (var collect-symb (gensym "collect")
+         wrapper wrap-outer)
+    (before-recur.push `(~'.push ~collect-symb ~loop-options.collect))
+    (set! wrap-outer
+      (fn [body] `(let [~collect-symb []] ~(wrapper body) ~collect-symb))))
+
+  (when loop-options.while
+    (var wrapper wrap-body)
+    (set! wrap-body (fn [body] [`(when ~loop-options.while ~@(wrapper body))])))
+
+  (when loop-options.update
+    (before-recur.push `(set! ~@loop-options.update)))
+
+  (when loop-options.let
+    (var wrapper wrap-outer)
+    (set! wrap-outer (fn [body] `(let ~loop-options.let ~(wrapper body)))))
+
+  (set! opts.before-recur before-recur)
+
+  (wrap-outer `(loop-body ~opts ~@(wrap-body body))))
 
 (defmacro loop-while [bindings condition & body]
-  (if (list? bindings)
-    `(loop [] (when ~bindings ~condition ~@body))
-    `(loop ~bindings (when ~condition ~@body))))
+  `(loop :let ~bindings :while ~condition ~@body))
 
 (defmacro -> [left app & apps]
   (cond
@@ -384,15 +423,15 @@
 (def ^:reader-macro reader-/
   (fn [reader buffer]
     (buffer.read1) ; consume the starting `/`
-    (loop [str ""
-           flags ""
-           ch (buffer.read1)
-           flag_regex (new RegExp "^[gimy]$")]
+    (loop :let [str ""
+                flags ""
+                ch (buffer.read1)
+                flag_regex (new RegExp "^[gimy]$")]
       (cond
         (not ch)      (new RegExp str flags)
         (== ch "/")   (do
-                        (loop [state (buffer.save)
-                               ch (buffer.read1)]
+                        (loop :let [state (buffer.save)
+                                    ch (buffer.read1)]
                           (if (.match ch flag_regex)
                               (recur flags (+ flags ch)
                                      state (buffer.save)
@@ -443,9 +482,9 @@
             (handle-accessor -1))
 
       (reader.isDigit ch)
-        (loop [n (buffer.read1)
-               state (buffer.save)
-               ch (buffer.read1)]
+        (loop :let [n (buffer.read1)
+                    state (buffer.save)
+                    ch (buffer.read1)]
           (if (reader.isDigit ch)
             (recur n (+ n ch)
                    state (buffer.save)

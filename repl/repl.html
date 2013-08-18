@@ -163,7 +163,7 @@
 
 (print """that's a "useful" feature""")
 
-(loop [i 0]
+(loop :let [i 0]
   (if (< i 4)
     (do
       (print i)

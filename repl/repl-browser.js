@@ -58,7 +58,6 @@ exports.gensym = gensym;
 },{}],2:[function(require,module,exports){
 var Namespace = require('./namespace');
 var Terr = require('./terr-ast');
-var codegen = require('escodegen');
 var JS = require('./js');
 var reader = require('./reader');
 var parser = require('./parser');
@@ -224,7 +223,7 @@ Environment.prototype.evaluateInNamespace = function (terr_ast, namespace) {
 
   var compile_nodes = Terr.Compile(terr_ast, "return", { interactive: true });
 
-  var js = codegen.generate(JS.Program(compile_nodes));
+  var js = JS.generate(JS.Program(compile_nodes));
 
   namespace.ast_nodes = namespace.ast_nodes.concat(terr_ast);
 
@@ -299,11 +298,7 @@ Environment.prototype.evalText = function (session, text, error_cb) {
 };
 
 Environment.prototype.asJS = function (mode, entry_fn) {
-  var raw_core = Terr.Call(
-    Terr.Identifier('eval'),
-    [Terr.Literal(core_js)]
-  );
-  raw_core['x-verbatim'] = core_js;
+  var raw_core = Terr.Verbatim(core_js);
 
   var seq = Terr.Seq([raw_core]);
 
@@ -344,7 +339,7 @@ Environment.prototype.asJS = function (mode, entry_fn) {
   var js_ast = Terr.Compile(seq, "statement", { interative: this.interactive });
 
   if (false) { // source map experimenting
-    var result = codegen.generate(JS.Program(js_ast), {
+    var result = JS.generate(JS.Program(js_ast), {
       sourceMap: "input",
       sourceMapWithCode: true,
       verbatim: 'x-verbatim'
@@ -354,7 +349,7 @@ Environment.prototype.asJS = function (mode, entry_fn) {
 
     return result.code;
   } else {
-    return codegen.generate(JS.Program(js_ast), {
+    return JS.generate(JS.Program(js_ast), {
       verbatim: 'x-verbatim'
     });
   }
@@ -362,7 +357,9 @@ Environment.prototype.asJS = function (mode, entry_fn) {
 
 exports.Environment = Environment;
 
-},{"./core":1,"./js":3,"./namespace":4,"./parser":5,"./reader":6,"./terr-ast":7,"escodegen":9,"fs":22}],3:[function(require,module,exports){
+},{"./core":1,"./js":3,"./namespace":4,"./parser":5,"./reader":6,"./terr-ast":7,"fs":22}],3:[function(require,module,exports){
+var codegen = require('escodegen');
+
 var nodes = {
   Identifier: ['name'],
   VariableDeclaration: {fields: ['declarations'], defaults: { kind: "var" }},
@@ -448,7 +445,11 @@ exports.MemberExpressionComputed = function (object, property) {
   };
 };
 
-},{}],4:[function(require,module,exports){
+exports.generate = function (tree, options) {
+  return codegen.generate(tree, options);
+};
+
+},{"escodegen":9}],4:[function(require,module,exports){
 var JS = require('./js');
 var Terr = require('./terr-ast');
 
@@ -2136,6 +2137,19 @@ var compilers = {
     fields: ['value'],
     compile: function (node, mode, context) {
       throw "Cannot compile Splice to JS, should be stripped by parser."
+    }
+  },
+
+  Verbatim: {
+    fields: ['js'],
+    compile: function (node, mode, context) {
+      var raw_core = Terr.Call(
+        Terr.Identifier('eval'),
+        [Terr.Literal(node.js)]
+      );
+      raw_core['x-verbatim'] = node.js;
+
+      return Terr.CompileToJS(raw_core, mode, context);
     }
   }
 }

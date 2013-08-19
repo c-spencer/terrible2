@@ -222,7 +222,7 @@ Environment.prototype.evaluateInNamespace = function (terr_ast, namespace) {
     }
   };
 
-  var compile_nodes = Terr.Compile(terr_ast, "return", { interactive: true});
+  var compile_nodes = Terr.Compile(terr_ast, "return", { interactive: true });
 
   var js = codegen.generate(JS.Program(compile_nodes));
 
@@ -2207,7 +2207,7 @@ Terr.CompileToJS = function (ast, mode, context) {
 }
 
 Terr.Compile = function (ast, mode, options) {
-  return Terr.CompileToJS(ast, mode, { interactive: options.interative });
+  return Terr.CompileToJS(ast, mode, { interactive: options.interactive });
 }
 
 },{"./js":3}],8:[function(require,module,exports){

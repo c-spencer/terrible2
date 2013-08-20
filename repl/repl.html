@@ -189,10 +189,13 @@
 ; in a synchronous manner. This assumes an asynchronous function with node-style
 ; conventions (single callback, [err, value] parameters).
 
+(defn set-timeout [n cb]
+  (setTimeout #(cb nil n) n))
+
 (.then
   (async-cb cb
-    (let [a @(cb-sleep 30 cb)
-          b @(cb-sleep 40 cb)]
+    (let [a @(set-timeout 30 cb)
+          b @(set-timeout 40 cb)]
       (+ a b)))
   #(console.log %))
 
@@ -205,7 +208,7 @@
     (loop :let [i 0]
       (&gt;! c i)
       (console.log i)
-      (&lt;! (sleep 500))
+      (&lt;! (timeout 500))
       (recur i (+ i 1))))
   (go
     (let [[a chan] (&lt;! c)
@@ -216,7 +219,7 @@
   (let [c (chan)]
     (go
       (loop
-        (&lt;! (sleep n))
+        (&lt;! (timeout n))
         (&gt;! c v)
         (recur)))
     c))

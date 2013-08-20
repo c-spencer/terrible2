@@ -17,9 +17,6 @@
   `(sync-node-callbacks
     (fn [~cb-symbol] ~@body)))
 
-(defn cb-sleep [n cb]
-  (setTimeout #(cb nil n) n))
-
 (defn ^:no-return Channel [limit]
   (set! this.values []
         this.selectors []))
@@ -57,8 +54,10 @@
 
 (varfn sync-go-block [gen]
   (set! gen (gen))
+  (var c (chan))
   (varfn handle [r]
-    (when (and r (not r.done))
+    (if r.done
+      (c.push r.value)
       (let [{:value value :done done} r
             [op] value]
         (cond (== op "select")
@@ -72,7 +71,8 @@
                   (Channel.select chans (fn [v chan] (handle (gen.next [v chan])))))
               :else (throw (+ "Unknown op" op))))))
 
-  (handle (gen.next)))
+  (handle (gen.next))
+  c)
 
 (defmacro go [& body]
   `(sync-go-block (fn [] ~@body)))
@@ -86,7 +86,7 @@
 (defmacro alts! [chans]
   `(yield ["alts" ~chans]))
 
-(defn sleep [n]
+(defn timeout [n]
   (let [c (chan)]
     (setTimeout #(c.push) n)
     c))

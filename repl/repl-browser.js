@@ -1400,10 +1400,6 @@ function commentReader (buffer) {
   return buffer;
 }
 
-function yieldReader (buffer, apostrophe) {
-  return new core.list([new core.symbol('yield'), this.read(buffer)]);
-}
-
 function quoteReader (buffer, apostrophe) {
   return new core.list([new core.symbol('quote'), this.read(buffer)]);
 }
@@ -1511,8 +1507,7 @@ var MACROS = {
   "~": unquoteReader,
   '"': stringReader,
   '#': dispatchReader,
-  '^': metadataReader,
-  '@': yieldReader
+  '^': metadataReader
 }
 
 function extend_macros (map) {

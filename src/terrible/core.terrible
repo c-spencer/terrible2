@@ -193,14 +193,6 @@
     (walker right)
     (opts.Terr.Seq (body.map walker))))
 
-(terr-macro js-while [opts test & body]
-  (var env (opts.env.newScope true false)
-       walker (opts.walker env))
-
-  (opts.Terr.While
-    (walker test)
-    (opts.Terr.Seq (body.map walker))))
-
 (def ^:macro destructure
   (lambda [left right]
     (cond (symbol? left) `(var ~left ~right)

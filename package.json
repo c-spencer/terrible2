@@ -9,8 +9,8 @@
     "mocha": "1.12.x",
     "connect": "2.8.x",
     "brfs": "0.0.7",
-    "escodegen": "0.0.24",
     "blanket": "1.1.x",
-    "watchify": "0.1.x"
+    "watchify": "0.1.x",
+    "traceur": "0.0.4"
   }
 }

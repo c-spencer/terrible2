@@ -358,6 +358,10 @@ Environment.prototype.asJS = function (mode, entry_fn) {
 exports.Environment = Environment;
 
 },{"./core":1,"./js":3,"./namespace":4,"./parser":5,"./reader":6,"./terr-ast":7,"fs":9}],3:[function(require,module,exports){
+// if (typeof traceur === "undefined") {
+//   traceur = require('traceur');
+// }
+
 var TJS = traceur.codegeneration.ParseTreeFactory;
 var TTree = traceur.syntax.trees;
 
@@ -370,10 +374,8 @@ var nodes = {
   ReturnStatement: ['argument'],
   ForStatement: ['init', 'test', 'update', 'body'],
   ForInStatement: ['left', 'right', 'body'],
-  WhileStatement: ['test', 'body'],
   ContinueStatement: ['label'],
   BreakStatement: ['label'],
-  LabelledStatement: ['label', 'body'],
   ExpressionStatement: ['expression'],
   IfStatement: ['test', 'consequent', 'alternate'],
   ConditionalExpression: ['test', 'consequent', 'alternate'],
@@ -403,25 +405,11 @@ exports.IdentifierToken = TJS.createIdentifierToken;
 
 for (var type in nodes) {
   (function (type, node) {
-    // if (Array.isArray(node)) {
-    //   var fields = node, defaults = {};
-    // } else {
-    //   var fields = node.fields, defaults = node.defaults;
-    // }
     exports[type] = function () {
-      // console.log(type, arguments);
       return new (Function.prototype.bind.apply(
         TTree[type],
         [null, null].concat(Array.prototype.slice.call(arguments, 0))
       ));
-
-      var o = { type: type };
-      var args = arguments;
-      for (var k in defaults) { o[k] = defaults[k]; }
-      fields.forEach(function (field, i) {
-        o[field] = args[i];
-      });
-      return o;
     }
   }(type, nodes[type]));
 }
@@ -2084,11 +2072,11 @@ var compilers = {
   Binary: {
     fields: ['left', 'op', 'right'],
     compile: function (node, mode, context) {
-      return ExpressionToMode(loc(node, JS.BinaryOperator(
+      return ExpressionToMode(loc(node, JS.ParenExpression(JS.BinaryOperator(
         Terr.CompileToJS(node.left, "expression", context),
         node.op,
         Terr.CompileToJS(node.right, "expression", context)
-      )), mode);
+      ))), mode);
     }
   },
 
@@ -2148,34 +2136,12 @@ var compilers = {
     }
   },
 
-  For: {
-    fields: ['init', 'test', 'update', 'body'],
-    compile: function (node, mode, context) {
-      return StatementToMode(JS.ForStatement(
-        intoBlock(node.init, "statement", context).declarations,
-        Terr.CompileToJS(node.test, "expression", context),
-        Terr.CompileToJS(node.update, "expression", context),
-        intoBlock(node.body, "statement", context)
-      ), mode, context);
-    }
-  },
-
   ForIn: {
     fields: ['left', 'right', 'body'],
     compile: function (node, mode, context) {
       return StatementToMode(JS.ForInStatement(
         intoBlock(node.left, "statement", context).declarations,
         Terr.CompileToJS(node.right, "expression", context),
-        intoBlock(node.body, "statement", context)
-      ), mode, context);
-    }
-  },
-
-  While: {
-    fields: ['test', 'body'],
-    compile: function (node, mode, context) {
-      return StatementToMode(JS.WhileStatement(
-        Terr.CompileToJS(node.test, "expression", context),
         intoBlock(node.body, "statement", context)
       ), mode, context);
     }

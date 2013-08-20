@@ -171,16 +171,6 @@
         `(if ~t ~v (cond ~@cases))
         `(if ~t ~v)))))
 
-(terr-macro js-for [opts init test update & body]
-  (var env (opts.env.newScope true false)
-       walker (opts.walker env))
-
-  (opts.Terr.For
-    (walker `(var ~@init))
-    (walker test)
-    (walker update)
-    (opts.Terr.Seq (body.map walker))))
-
 (terr-macro js-for-in [opts left right & body]
   (var env (opts.env.newScope true false)
        walker (opts.walker env))
@@ -293,16 +283,19 @@
   `(if ~cond (do ~@body)))
 
 (defmacro let [bindings & body]
-  (var vars [])
-  (js-for [i 0] (< i bindings.length) (set! i (+ i 2))
-    (var s (get bindings i)
-         v (get bindings (+ i 1)))
-    (if (symbol? s)
-      (vars.push `(var ~s ~v))
-      (do
-        (var letsymb (gensym "let"))
-        (vars.push `(var ~letsymb ~v))
-        (vars.push `(destructure ~s ~letsymb)))))
+  (var vars []
+       i 0)
+  (loop-body {}
+    (when (< i bindings.length)
+      (var s (get bindings i)
+           v (get bindings (+ i 1)))
+      (if (symbol? s)
+        (vars.push `(var ~s ~v))
+        (do
+          (var letsymb (gensym "let"))
+          (vars.push `(var ~letsymb ~v))
+          (vars.push `(destructure ~s ~letsymb))))
+      (recur i (+ i 2))))
   `(do ~@vars ~@body))
 
 (defmacro loop [& body]

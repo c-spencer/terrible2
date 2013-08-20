@@ -1,18 +1,21 @@
 (ns terrible.core.async)
 
+(extern setTimeout Deferred)
+
 (varfn sync-node-callbacks [gen]
-  (varfn result [err value]
-    (let [n (if err (gen.throw err) (gen.next value))]
-      (when n.done
-        (console.log n.value))))
-  (set! gen (gen result))
-  (gen.next))
+  (let [deferred (new Deferred)]
+    (varfn result [err value]
+      (let [n (if err (gen.throw err)
+                      (gen.next value))]
+        (when n.done
+          (deferred.callback n.value))))
+    (set! gen (gen result))
+    (gen.next)
+    (deferred.createPromise)))
 
 (defmacro cb [cb-symbol & body]
   `(sync-node-callbacks
     (fn [~cb-symbol] ~@body)))
-
-(extern setTimeout)
 
 (defn sleep [n cb]
   (setTimeout #(cb nil n) n))

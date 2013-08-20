@@ -176,6 +176,23 @@
     (< from to) (recur from (+ from 1))
     (> from to) (recur from (- from 1))
     (== from to) vec))
+
+; Terrible is built upon Traceur for compilation, and so can use ES6 features
+; (in a limited fashion) in current browsers. The @ reader macro is a shorthand
+; for yield, and is used by the terrible.core.async library to implement basic
+; asynchronous wrappings. The below example adds two delays in series. The async/cb
+; call returns a promise of the eventual result, but the internals can be coded
+; in a synchronous manner. This assumes an asynchronous function with node-style
+; conventions (single callback, [err, value] parameters).
+
+; (refer terrible.core.async async)
+
+; (.then
+;   (async/cb cb
+;     (let [a @(async/sleep 30 cb)
+;           b @(async/sleep 40 cb)]
+;       (+ a b)))
+;   #(console.log %))
 </textarea>
       <textarea class="panel input right" id="terrible-output"></textarea>
       <div class="panel compiler-options">

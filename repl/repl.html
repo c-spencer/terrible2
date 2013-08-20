@@ -178,9 +178,8 @@
     (== from to) vec))
 
 ; Terrible is built upon Traceur for compilation, and so can use ES6 features
-; (in a limited fashion) in current browsers. The @ reader macro is a shorthand
-; for yield, and is used by the terrible.core.async library to implement basic
-; asynchronous wrappings.
+; (in a limited fashion) in current browsers. Generators/Yield are used by the
+; terrible.core.async library to implement basic asynchronous constructs.
 
 (refer terrible.core.async)
 
@@ -194,8 +193,8 @@
 
 (.then
   (async-cb cb
-    (let [a @(set-timeout 30 cb)
-          b @(set-timeout 40 cb)]
+    (let [a (yield (set-timeout 30 cb))
+          b (yield (set-timeout 40 cb))]
       (+ a b)))
   #(console.log %))
 

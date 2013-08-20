@@ -138,15 +138,12 @@
 
 (terr-macro loop-body [opts options & body]
   (var previous-options opts.env.scope.js_frame.$loop
-       loop-id (opts.Terr.Identifier (get (gensym "loop") "name"))
        walker (opts.walker opts.env))
-  (set! options.loop-id loop-id
-        opts.env.scope.js_frame.$loop options)
+  (set! opts.env.scope.js_frame.$loop options)
   (var mapped-body (body.map walker))
   (set! opts.env.scope.js_frame.$loop previous-options)
   (if options.$referenced
     (opts.Terr.Loop
-      loop-id
       (opts.Terr.Seq mapped-body)
       (walker options.test)
       (walker options.update))
@@ -161,7 +158,7 @@
         (if loop-opts.before-recur
           (set! actions (loop-opts.before-recur.map walker)))
         (actions.push (walker `(set! ~@args))
-                      (opts.Terr.Continue loop-opts.loop-id))
+                      (opts.Terr.Continue))
         (opts.Terr.Seq actions))
     (throw "Must call recur from a loop-body context.")))
 
@@ -310,8 +307,10 @@
          v (get bindings (+ i 1)))
     (if (symbol? s)
       (vars.push `(var ~s ~v))
-      (vars.push `(do-noscope (var let# ~v)
-                              (destructure ~s let#)))))
+      (do
+        (var letsymb (gensym "let"))
+        (vars.push `(var ~letsymb ~v))
+        (vars.push `(destructure ~s ~letsymb)))))
   `(do ~@vars ~@body))
 
 (defmacro loop [& body]

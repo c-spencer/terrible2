@@ -180,19 +180,55 @@
 ; Terrible is built upon Traceur for compilation, and so can use ES6 features
 ; (in a limited fashion) in current browsers. The @ reader macro is a shorthand
 ; for yield, and is used by the terrible.core.async library to implement basic
-; asynchronous wrappings. The below example adds two delays in series. The async/cb
+; asynchronous wrappings.
+
+(refer terrible.core.async)
+
+; The below example adds two delays in series. The async/cb
 ; call returns a promise of the eventual result, but the internals can be coded
 ; in a synchronous manner. This assumes an asynchronous function with node-style
 ; conventions (single callback, [err, value] parameters).
 
-; (refer terrible.core.async async)
+(.then
+  (async-cb cb
+    (let [a @(cb-sleep 30 cb)
+          b @(cb-sleep 40 cb)]
+      (+ a b)))
+  #(console.log %))
 
-; (.then
-;   (async/cb cb
-;     (let [a @(async/sleep 30 cb)
-;           b @(async/sleep 40 cb)]
-;       (+ a b)))
-;   #(console.log %))
+; Generators can also be used to implement CSP style channels similar to Clojure's
+; core.async, or Go's channels. (using console.log because the i/o console doesn't
+; currently support async printing)
+
+(let [c (chan)]
+  (go
+    (loop :let [i 0]
+      (&gt;! c i)
+      (console.log i)
+      (&lt;! (sleep 500))
+      (recur i (+ i 1))))
+  (go
+    (let [[a chan] (&lt;! c)
+          [b chan] (&lt;! c)]
+    (console.log "get" a b))))
+
+(defn repeat [v n]
+  (let [c (chan)]
+    (go
+      (loop
+        (&lt;! (sleep n))
+        (&gt;! c v)
+        (recur)))
+    c))
+
+(let [a (repeat "a" 500)
+      b (repeat "b" 1000)
+      c (repeat "c" 1500)]
+  (go
+    (loop
+      (let [[v chan] (alts! [a b c])]
+        (console.log v)
+        (recur)))))
 </textarea>
       <textarea class="panel input right" id="terrible-output"></textarea>
       <div class="panel compiler-options">

@@ -129,6 +129,9 @@
 (terr-macro throw [opts arg]
   (opts.Terr.Throw ((opts.walker opts.env) arg)))
 
+(terr-macro yield [opts arg]
+  (opts.Terr.Yield ((opts.walker opts.env) arg)))
+
 (terr-macro get [opts target arg]
   (var walker (opts.walker opts.env))
   (opts.Terr.Member (walker target) (walker arg)))

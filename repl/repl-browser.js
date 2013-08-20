@@ -389,7 +389,8 @@ var nodes = {
   CatchClause: ['param', 'block'],
   ThisExpression: [],
   ParenExpression: ['expression'],
-  VariableDeclarationList: []
+  VariableDeclarationList: [],
+  YieldExpression: ['expression']
 }
 
 exports.BinaryOperator = function (left, op, right) {
@@ -425,17 +426,19 @@ for (var type in nodes) {
   }(type, nodes[type]));
 }
 
-exports.FunctionExpression = function(params, body) {
-  return new TTree.FunctionExpression(null, null, false,
+exports.FunctionExpression = function(params, body, generator) {
+  return new TTree.FunctionExpression(null,
+    null,
+    generator || false,
     new TTree.FormalParameterList(null, params),
     new TTree.Block(null, body)
   );
 };
 
-exports.FunctionDeclaration = function(id, params, body) {
+exports.FunctionDeclaration = function(id, params, body, generator) {
   return new TTree.FunctionDeclaration(null,
     id,
-    false,
+    generator || false,
     new TTree.FormalParameterList(null, params),
     new TTree.Block(null, body)
   );
@@ -1406,6 +1409,10 @@ function commentReader (buffer) {
   return buffer;
 }
 
+function yieldReader (buffer, apostrophe) {
+  return new core.list([new core.symbol('yield'), this.read(buffer)]);
+}
+
 function quoteReader (buffer, apostrophe) {
   return new core.list([new core.symbol('quote'), this.read(buffer)]);
 }
@@ -1513,7 +1520,8 @@ var MACROS = {
   "~": unquoteReader,
   '"': stringReader,
   '#': dispatchReader,
-  '^': metadataReader
+  '^': metadataReader,
+  '@': yieldReader
 }
 
 function extend_macros (map) {
@@ -1865,10 +1873,16 @@ var compilers = {
   SubFn: {
     fields: ['args', 'body', 'arity', 'variadic'],
     compile: function (node, mode, context) {
+
+      var fn_context = { hasYield: false },
+          this_context = context.set({ functionContext: fn_context });
+
       var fn_e = JS.FunctionExpression(
         node.args.map(function (n) { return Terr.CompileToJS(n, "expression", context); }),
-        Terr.CompileToJS(node.body, node.$noReturn ? "statement" : "return", context)
+        Terr.CompileToJS(node.body, node.$noReturn ? "statement" : "return", this_context),
+        fn_context.hasYield
       );
+
       if (mode === "expression") {
         return JS.ParenExpression(fn_e);
       } else {
@@ -1887,7 +1901,7 @@ var compilers = {
   NamespaceGet: {
     fields: ['namespace', 'name', 'js_name'],
     compile: function (node, mode, context) {
-      if (!context.interactive) {
+      if (!context.o.interactive) {
         return compilers.Identifier.compile(
           loc(node, {name: node.js_name}), mode, context);
       }
@@ -1903,7 +1917,7 @@ var compilers = {
   NamespaceSet: {
     fields: ['namespace', 'name', 'js_name', 'value', 'declaration'],
     compile: function (node, mode, context) {
-      if (!context.interactive) {
+      if (!context.o.interactive) {
         if (node.declaration == "var") {
           return compilers.Var.compile(loc(node, {
             pairs: [[Terr.Identifier(node.js_name), node.value]]
@@ -2197,14 +2211,17 @@ var compilers = {
     }
   },
 
-  Break: {
-    fields: ['label'],
+  Yield: {
+    fields: ['expression'],
     compile: function (node, mode, context) {
-      if (mode == "expression") {
-        throw "Break in expression position? Is this real?"
+      if (!context.o.functionContext) {
+        throw "Cannot call Yield outside of function context."
+      } else {
+        context.o.functionContext.hasYield = true;
       }
-
-      return JS.BreakStatement(JS.IdentifierToken(node.label.name));
+      return ExpressionToMode(
+        JS.YieldExpression(Terr.CompileToJS(node.expression, "expression", context))
+      );
     }
   },
 
@@ -2299,8 +2316,28 @@ Terr.CompileToJS = function (ast, mode, context) {
   }
 }
 
+function CompilationContext (o) {
+  this.o = o;
+}
+
+CompilationContext.prototype.set = function (bindings) {
+  var new_o = {};
+  for (var k in this.o) {
+    if (this.o.hasOwnProperty(k)) {
+      new_o[k] = this.o[k];
+    }
+  }
+  for (var k in bindings) {
+    if (bindings.hasOwnProperty(k)) {
+      new_o[k] = bindings[k];
+    }
+  }
+  return new CompilationContext(new_o);
+};
+
 Terr.Compile = function (ast, mode, options) {
-  return Terr.CompileToJS(ast, mode, { interactive: options.interactive });
+  var context = new CompilationContext({}).set(options);
+  return Terr.CompileToJS(ast, mode, context);
 }
 
 },{"./js":3}],8:[function(require,module,exports){

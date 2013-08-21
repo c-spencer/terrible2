@@ -2049,7 +2049,7 @@ var compilers = {
         };
       });
 
-      return ExpressionToMode(JS.ObjectExpression(props), mode, context);
+      return ExpressionToMode(JS.ParenExpression(JS.ObjectExpression(props)), mode, context);
     }
   },
 

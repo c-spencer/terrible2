@@ -298,13 +298,51 @@ Environment.prototype.evalText = function (session, text, error_cb) {
 };
 
 Environment.prototype.asJS = function (mode, entry_fn) {
-  var raw_core = Terr.Verbatim(core_js);
 
-  var seq = Terr.Seq([raw_core]);
+  // topologically sort dependent namespaces of the current namespace.
 
-  for (var i = 0; i < this.namespaces.length; ++i) {
-    seq.values.push(Terr.Seq(this.namespaces[i].ast_nodes));
+  var L = []; // Result List
+  var S = []; // Set of roots
+  var R = {}; // Remaining elements
+  var that = this;
+
+  function expand_dependency(ns) {
+    if (ns.dependent_namespaces.length === 0) {
+      if (!~S.indexOf(ns.name)) {
+        S.push(ns.name);
+      }
+    } else if (!R[ns.name]) {
+      R[ns.name] = {};
+      ns.dependent_namespaces.forEach(function (sub_ns) {
+        R[ns.name][sub_ns.name] = true;
+        expand_dependency(sub_ns);
+      });
+    }
   }
+
+  expand_dependency(this.current_namespace);
+
+  var removal, r_keys;
+  while (removal = S.pop()) {
+    L.push(removal);
+    Object.keys(R).forEach(function (key) {
+      delete R[key][removal];
+      if (Object.keys(R[key]).length === 0) {
+        S.push(key);
+        delete R[key];
+      }
+    });
+  }
+
+  // build a composite AST
+
+  var seq = Terr.Seq([
+    Terr.Verbatim(core_js)
+  ]);
+
+  L.forEach(function (ns_name) {
+    seq.values.push(Terr.Seq(that.getNamespace(ns_name).ast_nodes));
+  });
 
   if (mode === "library") {
     var export_map = this.current_namespace.exportsMap();
@@ -379,6 +417,7 @@ var nodes = {
   ConditionalExpression: ['test', 'consequent', 'alternate'],
   UnaryExpression: ['operator', 'argument'],
   MemberLookupExpression: ['object', 'property'],
+  ArrayLiteralExpression: ['elements'],
   Program: ['body'],
   ThrowStatement: ['argument'],
   TryStatement: ['block', 'handler', 'finalizer'],
@@ -1250,7 +1289,10 @@ WalkingEnv.prototype.resolveSymbol = function (parsed_symbol) {
 
     parsed_symbol.namespace = ns.name;
 
-    this.namespace.requiresNamespace(ns);
+    if (ns != this.namespace) {
+      this.namespace.requiresNamespace(ns);
+    }
+
     var scope = ns.scope;
   } else {
     var scope = this.scope;

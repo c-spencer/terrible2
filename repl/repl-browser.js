@@ -340,8 +340,20 @@ Environment.prototype.asJS = function (mode, entry_fn) {
     Terr.Verbatim(core_js)
   ]);
 
+  function filter_out_macros(ast_nodes) {
+    return ast_nodes.map(function (node) {
+      if (node.type == "Seq") {
+        return Terr.Seq(node.values.filter(function (f) {
+          return !f.$isMacro;
+        }));
+      } else {
+        return node;
+      }
+    });
+  }
+
   L.forEach(function (ns_name) {
-    seq.values.push(Terr.Seq(that.getNamespace(ns_name).ast_nodes));
+    seq.values.push(Terr.Seq(filter_out_macros(that.getNamespace(ns_name).ast_nodes)));
   });
 
   if (mode === "library") {
@@ -712,7 +724,10 @@ function Namespace (name, scope) {
 
 Namespace.prototype.exportsMap = function () {
   return this.scope.exports().filter(function (exported) {
-    if (exported.data.metadata['private'] || exported.data.metadata['macro']) {
+    if (exported.data.metadata['private']
+        || exported.data.metadata['macro']
+        || exported.data.metadata['terr-macro']
+        || exported.data.metadata['reader-macro']) {
       return false;
     } else {
       return true;
@@ -864,17 +879,21 @@ builtins = {
         env.scope.update(munged_name, { node: val });
 
         if (val && val.type == "Fn") {
-          if (metadata['no-return'])  {
+          if (metadata['no-return']) {
             val.$noReturn = true;
           }
           val.id = Terr.Identifier(munged_name);
         }
 
         if (env.scope.top_level) {
-          decls.push(Terr.NamespaceSet(ns, munged_name, js_name, val, "var"));
+          var v = Terr.NamespaceSet(ns, munged_name, js_name, val, "var");
         } else {
-          decls.push(Terr.Var([[accessor, val]]));
+          var v = Terr.Var([[accessor, val]]);
         }
+        if (metadata['terr-macro'] || metadata['macro'] || metadata['reader-macro']) {
+          v.$isMacro = true;
+        }
+        decls.push(v);
       }
     }
 

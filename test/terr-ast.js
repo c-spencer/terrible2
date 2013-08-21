@@ -185,3 +185,24 @@ describe('Fn', function () {
       ]), "expression"), 0);
   });
 });
+
+var gen_fn = Terr.Fn({0: Terr.SubFn([],
+                                    Terr.Seq([
+                                      Terr.Yield(Terr.Literal(4)),
+                                      Terr.Yield(Terr.Literal(8))
+                                    ]),
+                                    0,
+                                    false)},
+                      [0],
+                      null);
+
+describe('Yield', function () {
+  assert.throws(function () { runNode(Terr.Yield(Terr.Literal(5)), "expression") });
+
+  assert.deepEqual(runNode(
+      Terr.Seq([
+        Terr.Var([[Terr.Identifier("gen"), gen_fn],
+                  [Terr.Identifier("g"), Terr.Call(Terr.Identifier("gen"), [])]]),
+        Terr.Call(Terr.Member(Terr.Identifier("g"), Terr.Literal("next")), [])
+      ]), "statement"), { value: 4, done: false });
+});

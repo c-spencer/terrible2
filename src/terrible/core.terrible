@@ -215,20 +215,21 @@
               `(do-noscope ~@bindings))
           :else (throw "Unsupported destructuring form"))))
 
-(deflambda analyse-fn-args [args]
-  (var formal-args []
-       destructure-pairs [])
+(var analyse-fn-args
+  (lambda [args]
+    (var formal-args []
+         destructure-pairs [])
 
-  (args.forEach (lambda [arg i]
-    (if (symbol? arg)
-      (formal-args.push arg)
-      (do
-        (var new-symb (gensym "arg"))
-        (formal-args.push new-symb)
-        (destructure-pairs.push `(destructure ~arg ~new-symb))))))
+    (args.forEach (lambda [arg i]
+      (if (symbol? arg)
+        (formal-args.push arg)
+        (do
+          (var new-symb (gensym "arg"))
+          (formal-args.push new-symb)
+          (destructure-pairs.push `(destructure ~arg ~new-symb))))))
 
-  {:formal formal-args
-   :destructure destructure-pairs})
+    {:formal formal-args
+     :destructure destructure-pairs}))
 
 (def ^:macro fn
   (lambda [& body]

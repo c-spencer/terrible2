@@ -396,9 +396,10 @@ Environment.prototype.asJS = function (mode, entry_fn) {
 exports.Environment = Environment;
 
 },{"./core":1,"./js":3,"./namespace":4,"./parser":5,"./reader":6,"./terr-ast":7,"fs":9}],3:[function(require,module,exports){
-// if (typeof traceur === "undefined") {
-//   traceur = require('traceur');
-// }
+if (typeof traceur === "undefined") {
+  var traceur_path = "traceur"
+  traceur = require(traceur_path);
+}
 
 var TJS = traceur.codegeneration.ParseTreeFactory;
 var TTree = traceur.syntax.trees;

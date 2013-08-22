@@ -1,10 +1,13 @@
 (ns repl.core)
 
+(var uglify-js (require-lib "uglify"))
+
 (extern document setTimeout clearTimeout Terrible)
 
 (def input-el #(document.getElementById "terrible-input"))
 (def output-el #(document.getElementById "terrible-output"))
 (def log-el #(document.getElementById "terrible-log"))
+(def minify-el #(document.getElementById "environment-minify"))
 
 (var last-compile nil
      compile-timeout nil
@@ -29,6 +32,14 @@
   (messages.push (+ "! " m))
   (display-messages))
 
+(defn minify [js]
+  (let [compressor (uglify-js.Compressor {})]
+    (-> (let [parsed (uglify-js.parse js {})]
+          (parsed.figure_out_scope)
+          parsed)
+        (.transform compressor)
+        (.print_to_string {:beautify true}))))
+
 (defn -compile [text]
   (let [env (new Terrible.Environment {:src_root "src" :target "browser"})]
 
@@ -47,7 +58,12 @@
       (when exc.stack
         (push-error exc.stack))))
 
-    (set-output (env.asJS "library"))))
+    (let [js (env.asJS "library")]
+      (if (:checked (document.getElementById "environment-minify"))
+        (set-output (minify js))
+        (set-output js)))
+
+    ))
 
 (defn compile [text]
   (if compile-timeout (clearTimeout compile-timeout))
@@ -60,5 +76,7 @@
       (compile js))))
 
 (.addEventListener (input-el) "keyup" do-compile)
+(.addEventListener (minify-el) "change" do-compile)
 
-(do-compile true)
+(defn -main []
+  (do-compile true))

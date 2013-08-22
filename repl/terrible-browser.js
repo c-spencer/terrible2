@@ -137,7 +137,7 @@ function Environment (config) {
   this.scope.expose('gensym', core.gensym);
 
   this.namespaces = [];
-  this.module_requirements = {};
+  this.lib_requirements = {};
 };
 
 Environment.prototype.runMethod = function (name, args) {
@@ -146,6 +146,27 @@ Environment.prototype.runMethod = function (name, args) {
     throw "No such method " + this.current_namespace.name + "/" + name
   }
   return fn.value.apply(null, args);
+};
+
+Environment.prototype.findLib = function (name) {
+  if (typeof window !== "undefined") {
+    if (this.options.libs && this.options.libs[name]) {
+      var lib = this.options.libs[name];
+      if (!this.lib_requirements[name]) {
+        var loader = new FILE_LOADER("");
+        var se = document.createElement('script');
+        se.type = "text/javascript";
+        se.text = loader.loadPath(lib.path);
+        document.getElementsByTagName('head')[0].appendChild(se);
+        this.lib_requirements[name] = lib;
+      }
+      return lib.binding;
+    } else {
+      throw "No such lib binding " + name
+    }
+  } else {
+    return core.list([core.symbol('require'), name]);
+  }
 };
 
 Environment.prototype.loadNamespace = function (name, create) {
@@ -174,8 +195,6 @@ Environment.prototype.findNamespace = function (name, exclude_core) {
 Environment.prototype.createNamespace = function (name, exclude_core) {
   var ns = new Namespace.Namespace(name, this.scope.newScope(true, false));
   this.namespaces.push(ns);
-
-  console.log('createNs', name, exclude_core);
 
   if (name != "terrible.core" && !exclude_core) {
     ns.scope.refer("terrible.core", null, this.findNamespace("terrible.core"));
@@ -414,7 +433,7 @@ Environment.prototype.asJS = function (mode, entry_fn) {
 
 exports.Environment = Environment;
 
-},{"./core":1,"./js":3,"./namespace":4,"./parser":5,"./reader":6,"./terr-ast":7,"fs":9}],3:[function(require,module,exports){
+},{"./core":1,"./js":3,"./namespace":5,"./parser":6,"./reader":7,"./terr-ast":8,"fs":10}],3:[function(require,module,exports){
 if (typeof traceur === "undefined") {
   var traceur_path = "traceur"
   traceur = require(traceur_path);
@@ -551,6 +570,10 @@ exports.generate = function (tree, options) {
   return ES6_to_ES5(tree);
 };
 
+exports.print = function (tree, options) {
+  return writeAST(tree);
+};
+
 function ES6_to_ES5 (ast) {
   var ErrorReporter = traceur.util.ErrorReporter,
       Writer = traceur.outputgeneration.TreeWriter,
@@ -579,6 +602,37 @@ function writeAST (ast) {
 }
 
 },{}],4:[function(require,module,exports){
+var Environment = require('./environment').Environment;
+
+var project_opts = {};
+
+var project_env = new Environment({
+  src_root: ""
+});
+
+project_env.scope.expose('defproject', function (opts) {
+  project_opts = opts;
+  return null;
+});
+project_env.scope.update('defproject', { metadata: { macro: true, private: true }});
+
+project_env.getNamespace("project", false, true);
+
+exports.Loader = {
+  load: function (build) {
+    var build_opts = project_opts.builds[build];
+    var env = new Environment({
+      src_root: build_opts.root,
+      libs: build_opts.libs
+    });
+    env.current_namespace = env.getNamespace(build_opts.entry, false);
+    env.runMethod(build_opts.main, []);
+  }
+}
+
+exports.Environment = Environment;
+
+},{"./environment":2}],5:[function(require,module,exports){
 var JS = require('./js');
 var Terr = require('./terr-ast');
 
@@ -756,7 +810,7 @@ Namespace.prototype.requiresNamespace = function (ns) {
 exports.Namespace = Namespace;
 exports.Scope = Scope;
 
-},{"./js":3,"./terr-ast":7}],5:[function(require,module,exports){
+},{"./js":3,"./terr-ast":8}],6:[function(require,module,exports){
 var walker = require('./walker')
 var core = require('./core')
 var JS = require('./js')
@@ -999,6 +1053,18 @@ builtins = {
     opts.env.setNamespace(opts.env.env.getNamespace(ns.name, true));
 
     return Terr.Seq([]);
+  },
+
+  "require-lib": function (opts, lib) {
+    var lib_binding = opts.env.requireLib(lib);
+    if (isSymbol(lib_binding)) {
+      opts.env.scope.addSymbol(lib_binding.name, {
+        type: 'any',
+        accessor: Terr.Identifier(lib_binding.name),
+        metadata: { private: true }
+      });
+    }
+    return opts.walker(opts.env)(lib_binding);
   },
 
   "set!": function (opts) {
@@ -1328,6 +1394,10 @@ WalkingEnv.prototype.resolveSymbol = function (parsed_symbol) {
   return scope.resolve(mungeSymbol(parsed_symbol.root));
 };
 
+WalkingEnv.prototype.requireLib = function (lib_name) {
+  return this.env.findLib(lib_name);
+};
+
 exports.process = function (form, env, namespace, quoted) {
   var walking_env = new WalkingEnv(env, null, null, quoted, {}).setNamespace(namespace),
       ast = walker(walk_handler, form, walking_env);
@@ -1336,7 +1406,7 @@ exports.process = function (form, env, namespace, quoted) {
 };
 exports.mungeSymbol = mungeSymbol;
 
-},{"./core":1,"./js":3,"./terr-ast":7,"./walker":8}],6:[function(require,module,exports){
+},{"./core":1,"./js":3,"./terr-ast":8,"./walker":9}],7:[function(require,module,exports){
 // A partial port and modification of the Clojure reader
 // https://github.com/clojure/clojure/blob/master/src/jvm/clojure/lang/LispReader.java
 
@@ -1773,7 +1843,7 @@ Reader.prototype.newReadSession = function () {
 exports.Reader = Reader;
 exports.Buffer = Buffer;
 
-},{"./core":1}],7:[function(require,module,exports){
+},{"./core":1}],8:[function(require,module,exports){
 var JS = require('./js');
 
 var Terr = exports;
@@ -2371,7 +2441,7 @@ Terr.Compile = function (ast, mode, options) {
   return Terr.CompileToJS(ast, mode, context);
 }
 
-},{"./js":3}],8:[function(require,module,exports){
+},{"./js":3}],9:[function(require,module,exports){
 function walkProgramTree (handler, node) {
   function walkTree () {
     var args = Array.prototype.slice.call(arguments);
@@ -2408,9 +2478,9 @@ function walkProgramTree (handler, node) {
 
 module.exports = walkProgramTree;
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 // nothing to see here... no file methods for the browser
 
-},{}]},{},[2])(2)
+},{}]},{},[4])(4)
 });
 ;

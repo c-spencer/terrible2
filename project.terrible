@@ -1,7 +1,12 @@
 (defproject {
   :builds {
     :repl { :root "src"
-            :entry "repl.core" }
+            :entry "repl.core"
+            :main "-main"
+            :aot true
+            :libs {
+              :uglify { :path "uglify-browser.js"
+                        :binding UglifyJS } } }
   }
 
   })

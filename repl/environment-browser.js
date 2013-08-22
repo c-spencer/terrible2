@@ -1,4 +1,5 @@
-;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+(function(e){if("function"==typeof bootstrap)bootstrap("terrible",e);else if("object"==typeof exports)module.exports=e();else if("function"==typeof define&&define.amd)define(e);else if("undefined"!=typeof ses){if(!ses.ok())return;ses.makeTerrible=e}else"undefined"!=typeof window?window.Terrible=e():global.Terrible=e()})(function(){var define,ses,bootstrap,module,exports;
+return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 // Core Structures
 
 // Vector == Array
@@ -102,26 +103,31 @@ NodeLoader.prototype.loadPath = function (path) {
 }
 
 if (typeof window !== "undefined") {
-  var MODULE_LOADER = BrowserLoader;
+  var FILE_LOADER = BrowserLoader;
 } else {
-  var MODULE_LOADER = NodeLoader;
+  var FILE_LOADER = NodeLoader;
 }
 
-function Environment (target, interactive) {
+function Environment (config) {
+
+  this.options = {
+    target: "node",
+    src_root: "src"
+  }
+
+  for (var k in config) {
+    this.options[k] = config[k];
+  }
 
   var id_counter = 0;
-
-  this.interactive = interactive;
 
   this.genID = function (root) {
     return root + "_$" + (++id_counter);
   }
 
-  this.loader = new MODULE_LOADER("src");
+  this.loader = new FILE_LOADER(config.src_root);
 
   this.readSession = (new reader.Reader(this.genID)).newReadSession();
-
-  this.target = target || "node";
 
   this.scope = new Namespace.Scope();
 
@@ -131,8 +137,7 @@ function Environment (target, interactive) {
   this.scope.expose('gensym', core.gensym);
 
   this.namespaces = [];
-
-  this.loadNamespace('user', true);
+  this.module_requirements = {};
 };
 
 Environment.prototype.runMethod = function (name, args) {
@@ -147,7 +152,7 @@ Environment.prototype.loadNamespace = function (name, create) {
   this.current_namespace = this.getNamespace(name, create);
 };
 
-Environment.prototype.findNamespace = function (name) {
+Environment.prototype.findNamespace = function (name, exclude_core) {
   for (var i = 0; i < this.namespaces.length; ++i) {
     if (this.namespaces[i].name === name) {
       return this.namespaces[i];
@@ -156,7 +161,7 @@ Environment.prototype.findNamespace = function (name) {
   var loaded = this.loader.loadPath(name.replace(/\./g, '/') + ".terrible");
   if (loaded) {
     var prev_ns = this.current_namespace,
-        ns = this.createNamespace(name);
+        ns = this.createNamespace(name, exclude_core);
 
     this.current_namespace = ns;
     this.evalSession().eval(loaded);
@@ -166,22 +171,24 @@ Environment.prototype.findNamespace = function (name) {
   }
 };
 
-Environment.prototype.createNamespace = function (name) {
+Environment.prototype.createNamespace = function (name, exclude_core) {
   var ns = new Namespace.Namespace(name, this.scope.newScope(true, false));
   this.namespaces.push(ns);
 
-  if (name != "terrible.core") {
+  console.log('createNs', name, exclude_core);
+
+  if (name != "terrible.core" && !exclude_core) {
     ns.scope.refer("terrible.core", null, this.findNamespace("terrible.core"));
   };
   return ns;
 };
 
-Environment.prototype.getNamespace = function (name, create) {
-  var ns = this.findNamespace(name);
+Environment.prototype.getNamespace = function (name, create, exclude_core) {
+  var ns = this.findNamespace(name, exclude_core);
   if (ns) {
     return ns;
   } else if (create) {
-    return this.createNamespace(name);
+    return this.createNamespace(name, exclude_core);
   } else {
     throw "Couldn't getNamespace " + name;
   }
@@ -359,7 +366,7 @@ Environment.prototype.asJS = function (mode, entry_fn) {
   if (mode === "library") {
     var export_map = this.current_namespace.exportsMap();
 
-    if (this.target === "browser") {
+    if (this.options.target === "browser") {
       seq.values.push(Terr.Return(Terr.Obj(export_map)));
     } else {
       for (var i = 0; i < export_map.length; ++i) {
@@ -380,13 +387,13 @@ Environment.prototype.asJS = function (mode, entry_fn) {
     }
   }
 
-  if (this.target === "browser") {
+  if (this.options.target === "browser") {
     var fn = Terr.Fn([Terr.SubFn([], seq, 0)], [0], null);
     fn.$noReturn = true;
     seq = Terr.Call(fn, []);
   }
 
-  var js_ast = Terr.Compile(seq, "statement", { interative: this.interactive });
+  var js_ast = Terr.Compile(seq, "statement", { interactive: false });
 
   if (false) { // source map experimenting
     var result = JS.generate(JS.Program(js_ast), {
@@ -2404,184 +2411,6 @@ module.exports = walkProgramTree;
 },{}],9:[function(require,module,exports){
 // nothing to see here... no file methods for the browser
 
-},{}],10:[function(require,module,exports){
-var Environment = require('../lib/environment').Environment;
-
-// INPUT OUTPUT
-
-var target = "browser";
-var mode = "library";
-var interactive = false;
-var minify = true;
-var compile_timeout = null;
-
-function compileTerrible(text, callback) {
-  if (compile_timeout) {
-    clearTimeout(compile_timeout);
-  }
-  compile_timeout = setTimeout(function () {
-    // console.profile('compilation');
-    // console.time('compilation');
-    var compiled = compileTerrible_(text);
-    // console.timeEnd('compilation');
-    // console.profileEnd('compilation');
-    callback(compiled);
-  }, 500);
-}
-
-function compileTerrible_(text) {
-  var env = new Environment(target, interactive);
-
-  var messages = [];
-  env.scope.expose('print', function (v) {
-    // Somewhat messy reach-in
-    var printer = env.current_namespace.scope.resolve('print_str');
-
-    if (printer && printer.value) {
-      messages.push("> " + printer.value(v));
-    } else {
-      messages.push("> " + JSON.stringify(v));
-    }
-  });
-
-  try {
-    env.evalSession().eval(text, function (form, source, exc) {
-      messages.push("! " + source.trim());
-      messages.push("! " + (exc.message ? exc.message : exc));
-      if (exc.stack) {
-        messages.push("! " + exc.stack);
-      }
-    });
-  } catch (exc) {
-    messages.push("! " + (exc.message ? exc.message : exc));
-    if (exc.stack) {
-      messages.push("! " + exc.stack);
-    }
-  }
-
-  var js = env.asJS(mode);
-
-  if (minify) {
-    var parsed = UglifyJS.parse(js, {});
-    parsed.figure_out_scope();
-    var compressor = UglifyJS.Compressor({});
-    var compressed = parsed.transform(compressor);
-    // compressed.figure_out_scope();
-    // compressed.compute_char_frequency();
-    // compressed.mangle_names();
-    js = compressed.print_to_string({beautify: true});
-  }
-
-  return { js: js, log: messages };
-}
-
-var last_compile = null;
-
-function doCompile(forced) {
-  var this_compile = document.getElementById('terrible-input').value;
-  if (forced === true || this_compile != last_compile) {
-    compileTerrible(this_compile, function (result) {
-      document.getElementById('terrible-output').value = result.js;
-      document.getElementById('terrible-log').value = result.log.join("\n");
-    });
-  }
-  last_compile = this_compile;
-}
-
-document.getElementById('terrible-input').addEventListener('keyup', doCompile);
-
-document.getElementById('environment-target').addEventListener('change',
-  function () {
-    var el = document.getElementById('environment-target');
-    target = el.value;
-    doCompile(true);
-  }
-);
-
-document.getElementById('environment-mode').addEventListener('change',
-  function () {
-    var el = document.getElementById('environment-mode');
-    mode = el.value;
-    doCompile(true);
-  }
-);
-
-document.getElementById('environment-minify').addEventListener('change',
-  function () {
-    var el = document.getElementById('environment-minify');
-    minify = el.checked;
-    doCompile(true);
-  }
-);
-
-doCompile();
-
-// REPL
-
-window.replEnvironment = new Environment("browser", false);
-window.evalSession = replEnvironment.evalSession();
-
-function addResult(form, value, result_class) {
-  var el = document.getElementById('evaled-forms');
-  var new_el = document.createElement('div');
-  new_el.setAttribute('class', 'evaled');
-
-  var form_el = document.createElement('pre');
-  form_el.setAttribute('class', 'form');
-  form_el.innerText = form;
-  new_el.appendChild(form_el);
-
-  var value_el = document.createElement('pre');
-  value_el.setAttribute('class', result_class);
-  value_el.innerText = value;
-  new_el.appendChild(value_el);
-
-  el.appendChild(new_el);
-
-  el.scrollTop = el.scrollHeight;
-}
-
-function replEval(text) {
-  var results = evalSession.eval(text + "\n");
-
-  results.forEach(function (result) {
-    if (result.exception) {
-      addResult(result.text.trim(), result.exception, "value exception");
-    } else {
-      addResult(result.text.trim(), result.value, "value");
-    }
-  });
-}
-
-function replSubmit () {
-  var el = document.getElementById('repl-input');
-  replEval(el.value);
-  el.value = replEnvironment.readSession.buffer.remaining().trim();
-  replEnvironment.readSession.buffer.truncate();
-}
-
-document.getElementById('repl-submit').addEventListener('click', replSubmit);
-
-document.getElementById('repl-input').addEventListener('keypress', function (e) {
-  if (e.shiftKey && e.which == 13) {
-    e.preventDefault();
-    replSubmit();
-  }
-})
-
-// replEval("(+ 1 2)");
-// replEval("(defn inc [i] (+ i 1))");
-// replEval("(inc 5)");
-
-// Toggles
-
-document.getElementById('repl-toggle').addEventListener('click', function () {
-  document.querySelector('body').setAttribute('class', 'repl');
+},{}]},{},[2])(2)
 });
-
-document.getElementById('io-toggle').addEventListener('click', function () {
-  document.querySelector('body').setAttribute('class', 'input-output');
-});
-
-},{"../lib/environment":2}]},{},[10])
 ;

@@ -1,0 +1,64 @@
+(ns repl.core)
+
+(extern document setTimeout clearTimeout Terrible)
+
+(def input-el #(document.getElementById "terrible-input"))
+(def output-el #(document.getElementById "terrible-output"))
+(def log-el #(document.getElementById "terrible-log"))
+
+(var last-compile nil
+     compile-timeout nil
+     messages [])
+
+(defn display-messages []
+  (set! (:value (log-el)) (messages.join "\n"))
+  (set! (:scrollTop (log-el)) (:scrollHeight (log-el))))
+
+(defn clear-messages []
+  (set! messages [])
+  (display-messages))
+
+(defn set-output [js]
+  (set! (:value (output-el)) js))
+
+(defn push-message [m]
+  (messages.push (+ "> " m))
+  (display-messages))
+
+(defn push-error [m]
+  (messages.push (+ "! " m))
+  (display-messages))
+
+(defn -compile [text]
+  (let [env (new Terrible.Environment {:src_root "src" :target "browser"})]
+
+    (env.loadNamespace "user" true)
+
+    (clear-messages)
+    (env.scope.expose "print" (fn [v]
+      (let [printer (env.current_namespace.scope.resolve "print_str")]
+        (if (and printer printer.value)
+          (push-message (printer.value v))
+          (push-message (JSON.stringify v))))))
+
+    (.eval (env.evalSession) text (fn [form source exc]
+      (push-error (source.trim))
+      (push-error (if exc.message exc.message exc))
+      (when exc.stack
+        (push-error exc.stack))))
+
+    (set-output (env.asJS "library"))))
+
+(defn compile [text]
+  (if compile-timeout (clearTimeout compile-timeout))
+  (set! compile-timeout (setTimeout #(-compile text) 500)))
+
+(defn do-compile [forced]
+  (let [js (:value (input-el))]
+    (when (or forced
+              (not== js last-compile))
+      (compile js))))
+
+(.addEventListener (input-el) "keyup" do-compile)
+
+(do-compile true)

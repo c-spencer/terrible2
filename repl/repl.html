@@ -196,23 +196,21 @@
     (let [a (yield (set-timeout 30 cb))
           b (yield (set-timeout 40 cb))]
       (+ a b)))
-  #(console.log %))
+  #(print %))
 
 ; Generators can also be used to implement CSP style channels similar to Clojure's
-; core.async, or Go's channels. (using console.log because the i/o console doesn't
-; currently support async printing)
+; core.async, or Go's channels.
 
 (let [c (chan)]
   (go
     (loop :let [i 0]
       (&gt;! c i)
-      (console.log i)
       (&lt;! (timeout 500))
       (recur i (+ i 1))))
   (go
     (let [[a chan] (&lt;! c)
           [b chan] (&lt;! c)]
-    (console.log "get" a b))))
+    (print ["get" a b]))))
 
 (defn repeat [v n]
   (let [c (chan)]
@@ -227,9 +225,11 @@
       b (repeat "b" 1000)
       c (repeat "c" 1500)]
   (go
-    (loop
+    (loop :let [i 0]
+          :while (< i 5)
+          :update [i (+ i 1)]
       (let [[v chan] (alts! [a b c])]
-        (console.log v)
+        (print v)
         (recur)))))
 </textarea>
       <textarea class="panel input right" id="terrible-output"></textarea>
@@ -258,6 +258,8 @@
     </div>
     <script src="./traceur.js"></script>
     <script src="./uglify-browser.js"></script>
-    <script src="./repl-browser.js"></script>
+    <script src="./environment-browser.js"></script>
+    <script src="./loader.js"></script>
+    <script>Terrible.Loader.load("repl");</script>
   </body>
 </html>

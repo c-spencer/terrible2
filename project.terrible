@@ -1,0 +1,7 @@
+(defproject {
+  :builds {
+    :repl { :root "src"
+            :entry "repl.core" }
+  }
+
+  })

@@ -1,6 +1,4 @@
-var Environment = require('../lib/environment').Environment;
-
-// INPUT OUTPUT
+var Environment = Terrible.Environment;
 
 var target = "browser";
 var mode = "library";

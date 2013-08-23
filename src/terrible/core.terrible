@@ -3,7 +3,6 @@
 ; Required bindings assumed by macros
 
 (var ^:external Array) ; needed early for var args
-(var ^:external console)
 
 (var ^{:terr-macro true :private false} new
   (lambda [opts callee & args]

@@ -570,3 +570,16 @@
     (if (symbol? form.values.0)
       `(lambda ~args ~form)
       `(lambda ~args ~@form.values))))
+
+(varfn deftype-fn [type-name ({:name fn-name} [this-bind & args] & body)]
+  `(setfn! (get (:prototype ~type-name) ~fn-name) ~args
+    (var ~this-bind ~'this)
+    ~@body))
+
+(defmacro deftype [type-name constructor & fns]
+  (destructure ([this-bind & args] & body) constructor)
+  (set! type-name.$metadata {:no-return true})
+
+  `(do-noscope
+      (defn ~type-name ~args (var ~this-bind ~'this) ~@body)
+    ~@(fns.map #(deftype-fn type-name %1))))

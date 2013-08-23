@@ -3,6 +3,7 @@
 ; Required bindings assumed by macros
 
 (var ^:external Array) ; needed early for var args
+(var ^:external console)
 
 (var ^{:terr-macro true :private false} new
   (lambda [opts callee & args]
@@ -55,13 +56,33 @@
 ; js operators
 
 (defmacro-lambda binary-operator [symb op]
-  `(terr-macro ~symb [opts# ~'& args#]
+  (var op-symb (symbol (.concat "op" symb.name)))
+
+  `(terr-macro ~op-symb [opts# ~'& args#]
     (~'.reduce (args#.map (opts#.walker opts#.env))
       (lambda [left# right#] (opts#.Terr.Binary left# ~op right#)))))
 
+; limitation of terr-macros, cannot be defined and used inside the same form
+; so do-noscope can't be used to combine the binary-operator and binary-specialise
+; with how evaluation currently works.
+(defmacro-lambda binary-specialise [symb]
+  (var op-symb (symbol (.concat "op" symb.name)))
+  (set! symb.$metadata {:specialise op-symb})
+
+  `(deflambda ~symb [~'& args#]
+    (args#.reduce (lambda [a# b#] (~op-symb a# b#)))))
+
 (defmacro-lambda unary-operator [symb op]
-  `(terr-macro ~symb [opts# arg#]
+  (var op-symb (symbol (.concat "op" symb.name)))
+
+  `(terr-macro ~op-symb [opts# arg#]
     (opts#.Terr.Unary ~op ((opts#.walker opts#.env) arg#))))
+
+(defmacro-lambda unary-specialise [symb]
+  (var op-symb (symbol (.concat "op" symb.name)))
+  (set! symb.$metadata {:specialise op-symb})
+
+  `(deflambda ~symb [arg#] (~op-symb arg#)))
 
 (binary-operator + "+")
 (binary-operator - "-")
@@ -80,9 +101,30 @@
 (binary-operator instance? "instanceof")
 (binary-operator mod "%")
 
+(binary-specialise +)
+(binary-specialise -)
+(binary-specialise /)
+(binary-specialise *)
+(binary-specialise ==)
+(binary-specialise ==?)
+(binary-specialise not==)
+(binary-specialise not==?)
+(binary-specialise or)
+(binary-specialise and)
+(binary-specialise >)
+(binary-specialise >=)
+(binary-specialise <)
+(binary-specialise <=)
+(binary-specialise instance?)
+(binary-specialise mod)
+
 (unary-operator not "!")
 (unary-operator xor "~")
 (unary-operator type "typeof")
+
+(unary-specialise not)
+(unary-specialise xor)
+(unary-specialise type)
 
 ; Type checks
 

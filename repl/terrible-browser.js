@@ -864,6 +864,7 @@ function mungeSymbol (str) {
 
 builtins = {
   "var": function (opts) {
+
     var env = opts.env,
         walker = opts.walker(env),
         ns = env.namespace.name,
@@ -1198,6 +1199,13 @@ walk_handlers = {
 
       var resolved = env.resolveSymbol(parsed_head);
       if (resolved === false) { throw "Couldn't resolve " + name; }
+
+      if (resolved.metadata['specialise']) {
+        head = resolved.metadata['specialise'];
+        parsed_head = head.parse();
+        name = parsed_head.root;
+        resolved = env.resolveSymbol(parsed_head);
+      }
 
       // terr-macros and macros
       if (resolved.metadata['terr-macro']) {

@@ -1,6 +1,6 @@
 (defproject {
   :builds {
-    :repl { :root "src"
+    :repl { :root "stage1"
             :entry "repl.core"
             :main "-main"
             :aot true

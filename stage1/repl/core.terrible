@@ -41,7 +41,7 @@
         (.print_to_string {:beautify true}))))
 
 (defn -compile [text]
-  (let [env (new Terrible.Environment {:src_root "src" :target "browser"})]
+  (let [env (new Terrible.Environment {:src_root "stage1" :target "browser"})]
 
     (env.loadNamespace "user" true)
 

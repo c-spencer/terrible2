@@ -306,7 +306,8 @@ Environment.prototype.evalText = function (session, text, error_cb) {
       }
     }
 
-  }, function (reader, name, buffer) {
+  }, function (reader, buffer) {
+    var name = buffer.lookahead(1);
     var resolved = that.current_namespace.scope.resolve(parser.mungeSymbol('reader-'+name));
     if (resolved && resolved.metadata['reader-macro']) {
       try {
@@ -1623,9 +1624,8 @@ function stringReader (buffer, quote) {
 }
 
 dispatchReader = function (buffer, hash) {
-  var ch = buffer.lookahead(1);
   if (buffer.dispatch_handler) {
-    return buffer.dispatch_handler(this, ch, buffer);
+    return buffer.dispatch_handler(this, buffer);
   } else {
     throw "dispatch on symbol but no Buffer dispatch_handler"
   }

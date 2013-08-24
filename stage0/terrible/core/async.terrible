@@ -1,0 +1,92 @@
+(ns terrible.core.async)
+
+(extern setTimeout Deferred)
+
+(varfn sync-node-callbacks [gen]
+  (let [deferred (new Deferred)]
+    (varfn result [err value]
+      (let [n (if err (gen.throw err)
+                      (gen.next value))]
+        (when n.done
+          (deferred.callback n.value))))
+    (set! gen (gen result))
+    (gen.next)
+    (deferred.createPromise)))
+
+(defmacro async-cb [cb-symbol & body]
+  `(sync-node-callbacks
+    (fn [~cb-symbol] ~@body)))
+
+(defn ^:no-return Channel [limit]
+  (set! this.values []
+        this.selectors []))
+
+(setfn! Channel.prototype.push [v cb]
+  (cond (> this.values.length 0)    (this.values.push [v cb])
+        (> this.selectors.length 0) (do
+                                      ((this.selectors.shift) v this)
+                                      (when cb (cb)))
+        :else                       (this.values.push [v cb])))
+
+(setfn! Channel.prototype.select [cb]
+  (cond (> this.selectors.length 0) (this.selectors.push cb)
+        (> this.values.length 0)    (let [[v vcb] (this.values.shift)]
+                                      (cb v this)
+                                      (when vcb (vcb)))
+        :else                       (this.selectors.push cb)))
+
+(setfn! Channel.prototype.removeSelect [cb]
+  (let [idx (this.selectors.indexOf cb)]
+    (when (xor idx)
+      (this.selectors.splice idx 1))))
+
+(setfn! Channel.select [channels callback]
+  (let [foundSelect false
+        cb (fn [v chan]
+             (set! foundSelect true)
+             (channels.forEach #(%.removeSelect cb))
+             (callback v chan))]
+    (channels.forEach #(when (not foundSelect) (%.select cb)))))
+
+(defn chan
+  ([] (new Channel 0))
+  ([n] (new Channel n)))
+
+(varfn sync-go-block [gen]
+  (set! gen (gen))
+  (var c (chan))
+  (varfn handle [r]
+    (if r.done
+      (c.push r.value)
+      (let [{:value value :done done} r
+            [op] value]
+        (cond (== op "select")
+                (let [[op chan] value]
+                  (chan.select (fn [v chan] (handle (gen.next [v chan])))))
+              (== op "put")
+                (let [[op chan v] value]
+                  (chan.push v (fn [] (handle (gen.next [])))))
+              (== op "alts")
+                (let [[op chans] value]
+                  (Channel.select chans (fn [v chan] (handle (gen.next [v chan])))))
+              :else (throw (+ "Unknown op" op))))))
+
+  (handle (gen.next))
+  c)
+
+(defmacro go [& body]
+  `(sync-go-block (fn [] ~@body)))
+
+(defmacro <! [chan]
+  `(yield ["select" ~chan]))
+
+(defmacro >! [chan v]
+  `(yield ["put" ~chan ~v]))
+
+(defmacro alts! [chans]
+  `(yield ["alts" ~chans]))
+
+(defn timeout [n]
+  (let [c (chan)]
+    (setTimeout #(c.push) n)
+    c))

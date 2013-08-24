@@ -1,5 +1,8 @@
 (function(e){if("function"==typeof bootstrap)bootstrap("terrible",e);else if("object"==typeof exports)module.exports=e();else if("function"==typeof define&&define.amd)define(e);else if("undefined"!=typeof ses){if(!ses.ok())return;ses.makeTerrible=e}else"undefined"!=typeof window?window.Terrible=e():global.Terrible=e()})(function(){var define,ses,bootstrap,module,exports;
 return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+// nothing to see here... no file methods for the browser
+
+},{}],2:[function(require,module,exports){
 // Core Structures
 
 // Vector == Array
@@ -56,7 +59,7 @@ function gensym (root) {
 }
 exports.gensym = gensym;
 
-},{}],2:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
 var Namespace = require('./namespace');
 var Terr = require('./terr-ast');
 var JS = require('./js');
@@ -434,7 +437,7 @@ Environment.prototype.asJS = function (mode, entry_fn) {
 
 exports.Environment = Environment;
 
-},{"./core":1,"./js":3,"./namespace":5,"./parser":6,"./reader":7,"./terr-ast":8,"fs":10}],3:[function(require,module,exports){
+},{"./core":2,"./js":4,"./namespace":6,"./parser":7,"./reader":8,"./terr-ast":9,"fs":1}],4:[function(require,module,exports){
 if (typeof traceur === "undefined") {
   var traceur_path = "traceur"
   traceur = require(traceur_path);
@@ -602,7 +605,7 @@ function writeAST (ast) {
   return traceur.outputgeneration.TreeWriter.write(ast);
 }
 
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 var Environment = require('./environment').Environment;
 
 var project_opts = {};
@@ -633,7 +636,7 @@ exports.Loader = {
 
 exports.Environment = Environment;
 
-},{"./environment":2}],5:[function(require,module,exports){
+},{"./environment":3}],6:[function(require,module,exports){
 var JS = require('./js');
 var Terr = require('./terr-ast');
 
@@ -811,7 +814,7 @@ Namespace.prototype.requiresNamespace = function (ns) {
 exports.Namespace = Namespace;
 exports.Scope = Scope;
 
-},{"./js":3,"./terr-ast":8}],6:[function(require,module,exports){
+},{"./js":4,"./terr-ast":9}],7:[function(require,module,exports){
 var walker = require('./walker')
 var core = require('./core')
 var JS = require('./js')
@@ -1415,7 +1418,7 @@ exports.process = function (form, env, namespace, quoted) {
 };
 exports.mungeSymbol = mungeSymbol;
 
-},{"./core":1,"./js":3,"./terr-ast":8,"./walker":9}],7:[function(require,module,exports){
+},{"./core":2,"./js":4,"./terr-ast":9,"./walker":10}],8:[function(require,module,exports){
 // A partial port and modification of the Clojure reader
 // https://github.com/clojure/clojure/blob/master/src/jvm/clojure/lang/LispReader.java
 
@@ -1851,7 +1854,7 @@ Reader.prototype.newReadSession = function () {
 exports.Reader = Reader;
 exports.Buffer = Buffer;
 
-},{"./core":1}],8:[function(require,module,exports){
+},{"./core":2}],9:[function(require,module,exports){
 var JS = require('./js');
 
 var Terr = exports;
@@ -2449,7 +2452,7 @@ Terr.Compile = function (ast, mode, options) {
   return Terr.CompileToJS(ast, mode, context);
 }
 
-},{"./js":3}],9:[function(require,module,exports){
+},{"./js":4}],10:[function(require,module,exports){
 function walkProgramTree (handler, node) {
   function walkTree () {
     var args = Array.prototype.slice.call(arguments);
@@ -2486,9 +2489,6 @@ function walkProgramTree (handler, node) {
 
 module.exports = walkProgramTree;
 
-},{}],10:[function(require,module,exports){
-// nothing to see here... no file methods for the browser
-
-},{}]},{},[4])(4)
+},{}]},{},[5])(5)
 });
 ;

@@ -29,7 +29,7 @@ if (argv.help) {
   return;
 }
 
-var Environment = require(__dirname + '/lib/environment').Environment;
+var Environment = require(__dirname + '/stage0/environment').Environment;
 
 var env = new Environment("node", false);
 

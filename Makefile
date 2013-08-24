@@ -8,6 +8,6 @@ test-cov:
 	@NODE_ENV=test ./node_modules/.bin/mocha -r blanket -R html-cov > coverage.html
 
 watchify:
-	./node_modules/.bin/watchify -t brfs lib/loader.js -s Terrible -o repl/terrible-browser.js
+	./node_modules/.bin/watchify -t brfs stage0/loader.js -s Terrible -o repl/terrible-browser.js
 
 .PHONY: test test-cov

@@ -7,9 +7,15 @@
   (when node
     (.compile node mode context)))
 
+(defn shallow-clone-obj [o]
+  (let [new-o {}]
+    (js-for-in k o
+      (set! (get new-o k) (get o k)))
+    new-o))
+
 (defn into-block [node mode context]
   (cond
-    (== node undefined)
+    (not== node undefined)
       (let [r (compile node mode context)]
         (if (== r.length 1)
           r.0
@@ -37,11 +43,13 @@
         (== mode "expression")  (iife [node])))
 
 (defmacro defnode [name props args & body]
+  (set! name.$metadata {:no-return true})
   `(do-noscope
     (defn ~name ~props
       (if (instance? ~'this ~name)
-        ~@(props.map (fn [p] `(set! (get ~'this ~(:name p)) ~p)))
-        (new ~name ~@props)))
+        (do
+          ~@(props.map (fn [p] `(set! (get ~'this ~(:name p)) ~p))))
+        (return (new ~name ~@props))))
     (setfn! (-> ~name :prototype :compile) ~args ~@body)))
 
 (defnode Identifier [name] [mode context]
@@ -67,7 +75,7 @@
     (this.pairs.map #(js/VariableDeclaration
                       (js/BindingIdentifier %.0.name)
                       nil
-                      (or (compile %.0 "expression" context) nil))))])
+                      (or (compile %.1 "expression" context) nil))))])
 
 (defnode If [test cons alt] [mode context]
   (if (== mode "expression")
@@ -75,10 +83,10 @@
       (compile this.test "expression" context)
       (or (compile this.cons "expression" context) (js/IdentifierExpression "undefined"))
       (or (compile this.alt  "expression" context) (js/IdentifierExpression "undefined")))
-    (js/IfStatement
+    [(js/IfStatement
       (compile this.test "expression" context)
       (into-block this.cons mode context)
-      (into-block this.alt mode context))))
+      (into-block this.alt mode context))]))
 
 (defnode Literal [value] [mode context]
   (expression-to-mode (js/Literal this.value) mode))
@@ -194,18 +202,71 @@
   (js/Verbatim this.js))
 
 (defnode Fn [id bodies arities variadic] [mode context]
-  (var that this)
-  (this.bodies.forEach #(set! %.$noReturn that.$noReturn))
+  (var that this
+       js-id (if this.id (js/BindingIdentifier this.id.name) nil))
+  (this.bodies.forEach #(set! %.$noReturn that.$noReturn %.id js-id))
 
   (if (== this.arities.length 1)
-    (compile this.bodies.0 mode context)))
+    (compile this.bodies.0 mode context)
 
-(defnode SubFn [id args body] [mode context]
+    (let [max-arity (get this.arities
+                      (- this.arities.length (if (== nil this.variadic) 1 2)))
+          dispatch-args (loop :let [i 0]
+                              :collect (Identifier (+ "$" i))
+                              :while (< i max-arity)
+                              :update [i (+ i 1)]
+                          (recur))
+          args-len (Identifier "$args_len")
+          dispatch-body [(Var [[args-len
+                                (Member (Identifier "arguments")
+                                        (Literal "length"))]])]
+          closure-body [] ]
+
+      (this.arities.forEach
+        (fn [arity i]
+          (var app-name (Literal (+ "$" arity)))
+
+          (if (== arity "_")
+            (dispatch-body.push
+              (If (Binary args-len ">=" (Literal that.variadic))
+                (Return (Call (Member (Member that.id app-name) (Literal "apply"))
+                              [(Identifier "this") (Identifier "arguments")]))
+                undefined))
+            (dispatch-body.push
+              (If (Binary args-len "==" (Literal arity))
+                (Return (Call (Member (Member that.id app-name) (Literal "call"))
+                              (.concat [(Identifier "this")]
+                                       (dispatch-args.slice 0 arity))))
+                undefined)))
+          (closure-body.push
+            (Binary (Member that.id app-name) "=" (get that.bodies i)))))
+
+      (dispatch-body.push (Throw (Literal "No matching arity.")))
+
+      (if (not== mode "statement")
+        (closure-body.push this.id))
+
+      (var fn-js
+        (.concat
+          [(js/FunctionDeclaration
+            (js/BindingIdentifier this.id.name)
+            (dispatch-args.map #(compile % "expression" context))
+            (compile (Seq dispatch-body) "statement" context)
+            false)]
+          (compile (Seq closure-body) (if (not== mode "statement")
+                                          "return" "statement") context)))
+
+      (cond (== mode "return")     fn-js
+            (== mode "statement")  fn-js
+            (== mode "expression") (iife fn-js)))
+    ))
+
+(defnode SubFn [args body] [mode context]
   (let [fn-context { :yield false }
-        this-context (context.set {:fn-context fn-context})
+        this-context (assoc (shallow-clone-obj context) :fn-context fn-context)
         fn-expr ((if (== this.mode "expression") js/FunctionExpression
                                                  js/FunctionDeclaration)
-                  this.id
+                  (or this.id nil)
                   (this.args.map #(compile % "expression" context))
                   (compile this.body
                           (if this.$noReturn "statement" "return")
@@ -217,7 +278,7 @@
 
 (defnode NamespaceGet [namespace name js-name] [mode context]
   (->
-    (if context.o.interactive
+    (if context.interactive
       (Call
         (Member (Identifier "$ENV") (Literal "get"))
         [ (Literal this.namespace)
@@ -228,7 +289,7 @@
 (defnode NamespaceSet [namespace name js-name value declaration] [mode context]
   (->
     (cond
-      context.o.interactive
+      context.interactive
         (Call
           (Member (Identifier "$ENV") (Literal "set"))
           [ (Literal this.namespace)
@@ -240,17 +301,26 @@
         (Assign (Identifier this.js-name) this.value))
     (compile mode context)))
 
-
 ; (ns repl.example)
 ; (refer terrible.ast ast)
 ; (refer terrible.js js)
 
-; (js/write-ast
-;   (ast/compile
-;     (ast/SubFn nil [(ast/Identifier "i")]
-;       (ast/Seq [
-;         (ast/Binary (ast/Identifier "i") "+" (ast/Literal 1))
-;         ]))
-;     "statement"
-;     {}))
+; (-> (ast/Fn
+;       (ast/Identifier "sum")
+;       [ (ast/SubFn [(ast/Identifier "i")]
+;           (ast/Binary (ast/Identifier "i") "+" (ast/Literal 1))) ]
+;       [1]
+;       nil)
+;   (ast/compile "statement" {})
+;   js/Program
+;   js/write-ast
+;   print)
 
+; (-> (ast/IfStatement
+;       (ast/Literal true)
+;       (ast/Literal 10)
+;       (ast/Literal 5))
+;   (ast/compile "statement" {})
+;   js/Program
+;   js/write-ast
+;   print)

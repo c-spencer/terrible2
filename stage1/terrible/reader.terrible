@@ -1,0 +1,256 @@
+(ns terrible.reader)
+(refer terrible.core.extras)
+
+; Buffer
+
+(deftype Buffer
+  ([me string]
+    (set! this.string string))
+
+  (slice [me start n]
+    (me.string.substr start n))
+
+  (length [me]
+    me.string.length))
+
+(defn buffer [str] (new Buffer str))
+
+; Cursor
+
+(deftype Cursor
+  ([me buffer pos line col]
+    (set! me.buffer buffer
+          me.pos pos
+          me.line line
+          me.col col))
+
+  (peek [me n]
+    (if (< me.pos (me.buffer.length))
+      (me.buffer.slice me.pos n)
+      nil))
+
+  (slice [me cursor] (me.buffer.slice me.pos cursor.pos))
+
+  (read1 [me] (me.readn 1))
+
+  (readn [me n]
+    (if (> (+ me.pos n) (me.buffer.length))
+      nil
+      (loop :let [s ""
+                  i 0]
+        (if (< i n)
+          (let [ch (me.buffer.slice me.pos 1)]
+            (set! me.pos (+ me.pos 1))
+            (if (== "\n" ch)
+              (set! me.line (+ me.line 1)
+                    me.col 0)
+              (set! me.col (+ me.col 1)))
+            (recur s (+ s ch) i (+ i 1)))
+          s))))
+
+  (readp [me pred?]
+    (loop :let [s ""]
+      (if (and (not== (me.peek 1) nil)
+               (pred? (me.peek 1)))
+        (recur s (+ s (me.readn 1)))
+        s)))
+
+  (clone [me]
+    (new Cursor me.buffer me.pos me.line me.col)))
+
+(defn cursor [buffer] (new Cursor buffer 0 0 0))
+
+(extern parseFloat isFinite isNaN)
+
+(defprotocol Readable
+  (read [me] nil))
+
+(def macros {})
+
+(defn register-macro [ch fn]
+  (set! (get macros ch) fn))
+
+(defn run-macro [ch cursor s]
+  ((get macros ch) cursor s))
+
+(defn whitespace? [str] (.match str #/^[\t\r\n\s,]+$/))
+(defn digit? [str] (.match str #/^[0-9]+$/))
+(defn str-number? [n] (and (not (isNaN (parseFloat n)))
+                       (isFinite n)))
+(defn macro? [ch] (get macros ch))
+(defn terminator? [ch]
+  (or (== nil ch) (whitespace? ch) (macro? ch)))
+(defn terminating? [ch]
+  (or (whitespace? ch)
+      (and (macro? ch) (not== "#") (not== "'") (not== "%"))))
+
+(defn skip-whitespace [cursor]
+  (cursor.readp whitespace?)
+  cursor)
+
+; Numbers
+
+(defn read-number [cursor s]
+  (let [starting-cursor (cursor.clone)]
+    (set! s (+ s (cursor.readp #(not (terminator? %)))))
+
+    (if (str-number? s)
+      (parseFloat s)
+      (throw (+ "Invalid number " s)))))
+
+; Quote Readers
+
+(defn quote-reader [cursor]
+  '(quote ~(read cursor)))
+(register-macro "'" quote-reader)
+
+(defn syntax-quote-reader [cursor]
+  '(syntax-quote ~(read cursor)))
+(register-macro "`" syntax-quote-reader)
+
+(defn unquote-reader [cursor]
+  (if (== (cursor.peek 1) "@")
+    (let [at (cursor.read1)]
+      (list (symbol "unquote-splicing") (read cursor)))
+    (list (symbol "unquote") (read cursor))))
+(register-macro "~" unquote-reader)
+
+; Comments
+
+(defn comment-reader [cursor]
+  (cursor.readp #(.match % #/[^\n\r]/))
+  cursor)
+(register-macro ";" comment-reader)
+
+; Strings
+
+(defn string-reader [cursor]
+  (let [docquote (== (cursor.peek 2) "\"\"")]
+    (when docquote (cursor.readn 2))
+
+    (loop :let [ch (cursor.read1)
+                s ""]
+          :update [ch (cursor.read1)]
+      (cond
+        (== ch nil)
+          (throw "Unterminated string")
+        (and docquote (== ch "\""))
+          (if (== (cursor.peek 2) "\"\"")
+            (do (cursor.readn 2) s)
+            (recur s (+ s ch)))
+        (== ch "\"")
+          s
+        (== ch "\\")
+          (let [nch (cursor.read1)]
+            (recur s
+              (+ s (cond
+                (== nch "t")  "\t"   (== nch "r")  "\r"
+                (== nch "n")  "\n"   (== nch "b")  "\b"
+                (== nch "f")  "\f"   (== nch "\\") "\\"
+                (== nch "\"") "\""
+                :else (throw (+ "Unsupported escape " nch))))))
+        :else
+          (recur s (+ s ch))))))
+(register-macro "\"" string-reader)
+
+; Symbols
+
+(defn reify-symbol [s]
+  (cond
+    (== s "nil")    nil
+    (== s "null")   nil
+    (== s "true")   true
+    (== s "false")  false
+    :else           (symbol s)))
+
+(defn read-symbol [cursor ch]
+  (let [s (cursor.readp #(not (terminating? %)))]
+    (if (== ch ":")
+      (if (== s "")
+        (symbol ":")
+        (keyword s))
+      (reify-symbol (+ ch s)))))
+
+; Collection Helper
+
+(defn read-delimited-list [cursor endchar]
+  (loop :let [forms []]
+    (skip-whitespace cursor)
+    (let [ch (cursor.peek 1)]
+      (cond (== endchar ch) (do (cursor.read1) forms)
+            (macro? ch)     (let [ch (cursor.read1)
+                                  r (run-macro ch cursor ch)]
+                              (when (not== r cursor) (forms.push r))
+                              (recur))
+            :else           (do (forms.push (read cursor))
+                                (recur))))))
+
+; Collections
+
+(defn vector-reader [cursor]
+  (read-delimited-list cursor "]"))
+(register-macro "[" vector-reader)
+
+(defn list-reader [cursor]
+  (list.apply nil (read-delimited-list cursor ")")))
+(register-macro "(" list-reader)
+
+(defn hash-reader [cursor]
+  (loop :let [hash-obj {}
+              hash (read-delimited-list cursor "}")]
+    (if (> hash.length 1)
+      (let [[left right & new-hash] hash]
+        (cond (or (keyword? left) (symbol? left))
+                (recur hash new-hash
+                       (get hash-obj left.name) right)
+              (or (string? left) (number? left))
+                (recur hash new-hash
+                       (get hash-obj left) right)
+              :else
+                (throw (+ "Unsupported key " left))))
+      hash-obj)))
+(register-macro "{" hash-reader)
+
+(register-macro "]" #(throw "Unmatched delimiter ]"))
+(register-macro ")" #(throw "Unmatched delimiter )"))
+(register-macro "}" #(throw "Unmatched delimiter }"))
+
+; Metadata
+
+(defn metadata-reader [cursor caret]
+  (if (whitespace? (cursor.peek 1))
+    (symbol caret)
+    (let [metadata (read cursor)
+          form (read cursor)]
+
+      (when (not (symbol? form))
+        (throw "Can only attach metadata to symbols"))
+
+      (assoc form :$metadata
+        (if (keyword? metadata)
+          (assoc {} metadata true)
+          metadata))
+      )))
+(register-macro "^" metadata-reader)
+
+; Implement Readables
+
+(extend-type Cursor
+  Readable
+  (read [cursor]
+    (let [starting-cursor (.clone (skip-whitespace cursor))
+          ch (cursor.read1)]
+
+      (cond (== nil ch) (throw "EOF")
+            (digit? ch) (read-number cursor ch)
+            (macro? ch) (let [r (run-macro ch cursor ch)]
+                          (if (== r cursor) (recur) r))
+            (== "-" ch) (if (digit? (cursor.peek 1))
+                          (- 0 (read-number cursor ""))
+                          (read-symbol cursor ch))
+            :else       (read-symbol cursor ch))
+      )))
+
+(extend-type String
+  Readable
+  (read [str] (-> (buffer str) cursor read)))

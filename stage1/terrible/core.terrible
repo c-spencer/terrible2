@@ -583,3 +583,9 @@
   `(do-noscope
       (defn ~type-name ~args (var ~this-bind ~'this) ~@body)
     ~@(fns.map #(deftype-fn type-name %1))))
+
+(defn assoc [o name value]
+  (if (keyword? name)
+    (set! (get o (:name name)) value)
+    (set! (get o name) value))
+  o)

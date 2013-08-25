@@ -546,6 +546,14 @@ exports.Literal = function (value) {
     return TJS.createBooleanLiteral(value);
   } else if (value === null) {
     return TJS.createNullLiteral();
+  } else if (value instanceof RegExp) {
+    return new TTree.LiteralExpression(null,
+      new traceur.syntax.LiteralToken(
+        traceur.syntax.TokenType.REGULAR_EXPRESSION,
+        value.toString(),
+        null
+      )
+    );
   } else {
     throw "Unknown literal kind " + value;
   }

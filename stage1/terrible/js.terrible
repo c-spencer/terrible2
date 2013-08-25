@@ -44,9 +44,9 @@
     (t-factory.createOperatorToken op)
     right))
 
-(defn FunctionExpression [params body generator]
+(defn FunctionExpression [id params body generator]
   (new t-tree.FunctionExpression nil
-    nil
+    id
     (or generator false)
     (FormalParameterList params)
     (Block body)))
@@ -79,7 +79,10 @@
 (defn Literal [v]
   (cond
     (== (type v) "string")  (t-factory.createStringLiteral v)
-    (== (type v) "number")  (t-factory.createNumberLiteral v)
+    (== (type v) "number")
+      (if (< v 0)
+        (UnaryExpression "-" (t-factory.createNumberLiteral (- 0 v)))
+        (t-factory.createNumberLiteral v))
     (== (type v) "boolean") (t-factory.createBooleanLiteral v)
     (== v nil)              (t-factory.createNumberLiteral)
     (instance? v RegExp)    (new t-tree.LiteralExpression nil

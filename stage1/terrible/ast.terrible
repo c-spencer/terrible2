@@ -1,0 +1,256 @@
+(ns terrible.ast)
+(refer terrible.js js)
+
+(def undefined)
+
+(defn compile [node mode context]
+  (when node
+    (.compile node mode context)))
+
+(defn into-block [node mode context]
+  (cond
+    (== node undefined)
+      (let [r (compile node mode context)]
+        (if (== r.length 1)
+          r.0
+          (js/Block r)))
+
+    (== mode "return")
+      (js/ReturnStatement undefined)
+
+    :else
+      undefined))
+
+(defn iife [body]
+  (-> (js/FunctionExpression nil [] body false)
+      (js/CallExpression [])
+      js/ParenExpression))
+
+(defn expression-to-mode [node mode]
+  (cond (== mode "statement")   [(js/ExpressionStatement node)]
+        (== mode "return")      [(js/ReturnStatement node)]
+        (== mode "expression")  node))
+
+(defn statement-to-mode [node mode]
+  (cond (== mode "statement")   [node]
+        (== mode "return")      [(js/ReturnStatement (iife [node]))]
+        (== mode "expression")  (iife [node])))
+
+(defmacro defnode [name props args & body]
+  `(do-noscope
+    (defn ~name ~props
+      (if (instance? ~'this ~name)
+        ~@(props.map (fn [p] `(set! (get ~'this ~(:name p)) ~p)))
+        (new ~name ~@props)))
+    (setfn! (-> ~name :prototype :compile) ~args ~@body)))
+
+(defnode Identifier [name] [mode context]
+  (expression-to-mode
+    (js/IdentifierExpression this.name)
+    mode))
+
+(defnode Seq [values] [mode context]
+  (let [statements []
+        vs (this.values.slice 0)
+        last (vs.pop)]
+    (vs.forEach #(statements.push.apply statements
+                  (compile % "statement" context)))
+    (statements.push.apply statements
+      (compile last (if (== mode "statement") mode "return") context))
+
+    (if (== mode "expression") (iife statements) statements)))
+
+(defnode Var [pairs] [mode context]
+  (when (not== mode "statement") (throw "Var in non-statement position."))
+
+  [(js/VariableStatement "var"
+    (this.pairs.map #(js/VariableDeclaration
+                      (js/BindingIdentifier %.0.name)
+                      nil
+                      (or (compile %.0 "expression" context) nil))))])
+
+(defnode If [test cons alt] [mode context]
+  (if (== mode "expression")
+    (js/ConditionalExpression
+      (compile this.test "expression" context)
+      (or (compile this.cons "expression" context) (js/IdentifierExpression "undefined"))
+      (or (compile this.alt  "expression" context) (js/IdentifierExpression "undefined")))
+    (js/IfStatement
+      (compile this.test "expression" context)
+      (into-block this.cons mode context)
+      (into-block this.alt mode context))))
+
+(defnode Literal [value] [mode context]
+  (expression-to-mode (js/Literal this.value) mode))
+
+(defnode Try [body catch-arg catch-body finally-body] [mode context]
+  (let [sub-mode
+          (if (or (== mode "expression")
+                  (== mode "return"))
+            "return"
+            "statement")
+        try-statement
+          (js/TryStatement
+            (js/Block (compile this.body sub-mode context))
+            (js/CatchClause
+              (compile this.catch-arg "expression" context)
+              (js/Block (compile this.catch-body sub-mode sub-mode)))
+            (if this.finally-body
+              (js/Block (compile this.finally-body "statement" context))
+              undefined))]
+    (if (or (== mode "statement")
+            (== mode "return"))
+      [try-statement]
+      (iife [try-statement]))))
+
+(defnode Member [left right] [mode context]
+  (expression-to-mode
+    (js/MemberExpression
+      (compile this.left "expression" context)
+      (compile this.right "expression" context))
+    mode))
+
+(defnode Obj [properties] [mode context]
+  (->
+    (js/ObjectExpression
+      (this.properties.map
+        #({:name %.key :value (compile %.value "expression" context)})))
+    js/ParenExpression
+    (expression-to-mode mode)))
+
+(defnode Binary [left op right] [mode context]
+  (expression-to-mode
+    (js/BinaryOperator
+      (compile this.left "expression" context)
+      this.op
+      (compile this.right "expression" context))
+    mode))
+
+(defn Assign [left right] (new Binary left "=" right))
+
+(defnode Unary [op expr] [mode context]
+  (expression-to-mode
+    (js/UnaryExpression
+      this.op
+      (compile this.expr "expression" context))
+    mode))
+
+(defnode Call [target args] [mode context]
+  (expression-to-mode
+    (js/CallExpression
+      (compile this.target "expression" context)
+      (this.args.map #(compile % "expression" context)))
+    mode))
+
+(defnode Arr [values] [mode context]
+  (expression-to-mode
+    (js/ArrayLiteralExpression
+      (this.values.map #(compile % "expression" context)))
+    mode))
+
+(defnode Return [expression] [mode context]
+  [(js/ReturnStatement (compile this.expression "expression" context))])
+
+(defnode New [callee args] [mode context]
+  (expression-to-mode
+    (js/NewExpression
+      (compile this.callee "expression" context)
+      (this.args.map #(compile % "expression" context)))
+    mode))
+
+(defnode ForIn [left right body] [mode context]
+  (statement-to-mode
+    (js/ForInStatement
+      (-> (into-block this.left "statement" context) :declarations)
+      (compile this.right "expression" context)
+      (into-block this.body "statement" context))
+    mode))
+
+(defnode Loop [body test update] [mode context]
+  (let [loop (js/ForStatement
+                undefined
+                (or (compile this.test "expression" context)
+                    (js/Literal true))
+                (compile this.update "expression" context)
+                (into-block this.body "return" context))]
+    (cond (== mode "return")      [loop]
+          (== mode "statement")   [(-> (iife [loop]) js/ExpressionStatement)]
+          (== mode "expression")  (iife [loop]))))
+
+(defnode Continue [] [mode context]
+  (js/ContinueStatement))
+
+(defnode Yield [expression] [mode context])
+
+(defnode Throw [expression] [mode context]
+  (statement-to-mode
+    (js/ThrowStatement (compile this.expression "expression" context))
+    mode))
+
+(defnode Splice [value] [mode context]
+  (throw "Cannot compile a splice to JS, should be stripped by parser."))
+
+(defnode Verbatim [js] [mode context]
+  (js/Verbatim this.js))
+
+(defnode Fn [id bodies arities variadic] [mode context]
+  (var that this)
+  (this.bodies.forEach #(set! %.$noReturn that.$noReturn))
+
+  (if (== this.arities.length 1)
+    (compile this.bodies.0 mode context)))
+
+(defnode SubFn [id args body] [mode context]
+  (let [fn-context { :yield false }
+        this-context (context.set {:fn-context fn-context})
+        fn-expr ((if (== this.mode "expression") js/FunctionExpression
+                                                 js/FunctionDeclaration)
+                  this.id
+                  (this.args.map #(compile % "expression" context))
+                  (compile this.body
+                          (if this.$noReturn "statement" "return")
+                           this-context)
+                  fn-context.yield)]
+    (if (== mode "expression")
+      (js/ParenExpression fn-expr)
+      [fn-expr])))
+
+(defnode NamespaceGet [namespace name js-name] [mode context]
+  (->
+    (if context.o.interactive
+      (Call
+        (Member (Identifier "$ENV") (Literal "get"))
+        [ (Literal this.namespace)
+          (Literal this.name) ])
+      (Identifier this.js-name))
+    (compile mode context)))
+
+(defnode NamespaceSet [namespace name js-name value declaration] [mode context]
+  (->
+    (cond
+      context.o.interactive
+        (Call
+          (Member (Identifier "$ENV") (Literal "set"))
+          [ (Literal this.namespace)
+            (Literal this.name)
+            (or this.value (Identifier "undefined")) ])
+      (== this.declaration "var")
+        (Var [[(Identifier this.js-name) this.value]])
+      :else
+        (Assign (Identifier this.js-name) this.value))
+    (compile mode context)))
+
+
+; (ns repl.example)
+; (refer terrible.ast ast)
+; (refer terrible.js js)
+
+; (js/write-ast
+;   (ast/compile
+;     (ast/SubFn nil [(ast/Identifier "i")]
+;       (ast/Seq [
+;         (ast/Binary (ast/Identifier "i") "+" (ast/Literal 1))
+;         ]))
+;     "statement"
+;     {}))
+

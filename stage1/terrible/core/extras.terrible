@@ -67,3 +67,6 @@
 (extend-type Function Printable
   (print-str [f]
     (+ "#fn[" f.name "]")))
+
+(extend-type String Printable
+  (print-str [s] s))

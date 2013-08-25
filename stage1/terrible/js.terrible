@@ -1,0 +1,112 @@
+(ns terrible.js)
+
+(extern traceur)
+(def t-tree traceur.syntax.trees)
+(def t-factory traceur.codegeneration.ParseTreeFactory)
+
+(defn parse-js [s]
+  (let [ErrorReporter traceur.util.ErrorReporter
+        source (new traceur.syntax.SourceFile "my-file" s)
+        parser (new traceur.syntax.Parser (new ErrorReporter) source)]
+    (parser.parseProgram)))
+
+(defn write-ast [ast]
+  (traceur.outputgeneration.TreeWriter.write ast))
+
+(var nativeNodes
+ '[ VariableDeclaration     ObjectExpression        FormalParameterList
+    Block                   ReturnStatement         ForStatement
+    ForInStatement          ContinueStatement       ExpressionStatement
+    IfStatement             ConditionalExpression   UnaryExpression
+    MemberLookupExpression  ArrayLiteralExpression  Program
+    ThrowStatement          TryStatement            CatchClause
+    ThisExpression          ParenExpression         VariableDeclarationList
+    YieldExpression         ArgumentList            ObjectLiteralExpression ])
+
+(defmacro reify-natives []
+  `(do-noscope
+    ~@(nativeNodes.map (fn [symb]
+      `(defmacro ~symb [~'& args#]
+        (syntax-quote
+          (new (get t-tree ~(:name symb)) nil
+               (~'unquote-splicing args#))))
+      ))))
+
+(reify-natives)
+
+(def BindingIdentifier    t-factory.createBindingIdentifier)
+(def IdentifierExpression t-factory.createIdentifierExpression)
+(def IdentifierToken      t-factory.createIdentifierToken)
+
+(defn BinaryOperator [left op right]
+  (new t-tree.BinaryOperator nil
+    left
+    (t-factory.createOperatorToken op)
+    right))
+
+(defn FunctionExpression [params body generator]
+  (new t-tree.FunctionExpression nil
+    nil
+    (or generator false)
+    (FormalParameterList params)
+    (Block body)))
+
+(defn FunctionDeclaration [id params body generator]
+  (new t-tree.FunctionDeclaration nil
+    id
+    (or generator false)
+    (FormalParameterList params)
+    (Block body)))
+
+(defn CallExpression [callee args]
+  (new t-tree.CallExpression nil
+    callee
+    (ArgumentList args)))
+
+(defn VariableStatement [type vars]
+  (new t-tree.VariableStatement nil
+    (VariableDeclarationList type vars)))
+
+(defn NewExpression [operand args]
+  (new t-tree.NewExpression nil
+    (ParenExpression operand)
+    (ArgumentList args)))
+
+(defn ObjectExpression [props]
+  (ObjectLiteralExpression
+    (props.map #(t-factory.createPropertyNameAssignment %.name %.value))))
+
+(defn Literal [v]
+  (cond
+    (== (type v) "string")  (t-factory.createStringLiteral v)
+    (== (type v) "number")  (t-factory.createNumberLiteral v)
+    (== (type v) "boolean") (t-factory.createBooleanLiteral v)
+    (== v nil)              (t-factory.createNumberLiteral)
+    (instance? v RegExp)    (new t-tree.LiteralExpression nil
+                              (new traceur.syntax.LiteralToken
+                                traceur.syntax.TokenType.REGULAR_EXPRESSION
+                                (.toString v)
+                                nil))
+    :else                   (throw (+ "Unknown literal " v))))
+
+(defn Verbatim [js]
+  (parse-js js))
+
+(defn MemberExpression [object property]
+  (if (and (== property.type "LITERAL_EXPRESSION")
+           (.exec #/^"[a-zA-Z_$][0-9a-zA-Z_$]*"$/ property.literalToken.value))
+    (let [v property.literalToken.value]
+      (t-factory.createMemberExpression
+        object
+        (v.substring 1 (- v.length 1))))
+    (MemberLookupExpression object property)))
+
+(defn generate [ast]
+  (let [ErrorReporter       traceur.util.ErrorReporter
+        Writer              traceur.outputgeneration.TreeWriter
+        Project             traceur.semantics.symbols.Project
+        ProgramTransformer  traceur.codegeneration.ProgramTransformer]
+
+    (-> (new ProgramTransformer (new ErrorReporter) (new Project "./"))
+        (.transform ast {})
+        write-ast)))

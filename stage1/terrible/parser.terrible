@@ -1,0 +1,32 @@
+(ns terrible.parser)
+(refer terrible.js js)
+(refer terrible.ast ast)
+
+(var reserved-words ["break" "do" "instanceof" "typeof" "case" "else" "new",
+                      "var" "catch" "finally" "return" "void" "continue" "for",
+                      "switch" "while" "debugger" "function" "with" "default" "if",
+                      "throw" "delete" "in" "try" "class" "enum" "extends" "super",
+                      "const" "export" "import" "implements" "let" "private" "public",
+                      "yield" "interface" "package" "protected" "static"])
+
+(var reserved-regex (new RegExp (+ "^(" (reserved-words.join "|") ")$") "g"))
+
+(var munged-symbols { ":"  "COLON"   "+"  "PLUS"       ">" "GT"
+                      "<"  "LT"      "="  "EQ"         "~" "TILDE"
+                      "!"  "BANG"    "@"  "CIRCA"      "#" "HASH"
+                      "'"  "QUOTE"   "\"" "DQUOTE"     "%" "PERCENT"
+                      "^"  "CARET"   "&"  "AMPERSAND"  "*" "STAR"
+                      "|"  "BAR"     "{"  "LBRACE"     "}" "RBRACE"
+                      "["  "LBRACK"  "]"  "RBRACK"     "/" "SLASH"
+                      "\\" "BSLASH"  "?"  "QMARK"      "." "DOT"
+                      "("  "LPAREN"  ")"  "RPAREN" })
+
+(var munged-regex (new RegExp (+ "[" (-> (Object.keys munged-symbols)
+                                         (.map #(+ "\\" %))
+                                         (.join "|")) "]")))
+
+(defn munge-symbol [string]
+  (-> string
+      (.replace #/\-/g "_")
+      (.replace munged-regex #(+ "_" (get munged-symbols %) "_"))
+      (.replace reserved-regex #(+ % "_"))))

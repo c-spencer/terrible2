@@ -414,6 +414,26 @@
           (fn ~@(method.values.slice 1))))
       ))))
 
+(defmacro extend-protocol [protocol & bindings]
+  (loop :let [current {:symbol nil :fns []}
+              extends []
+              close (fn [] (when current.symbol
+                      (extends.push `(extend-type ~current.symbol
+                                                  ~protocol
+                                                  ~@current.fns))))]
+    (if (> bindings.length 0)
+      (let [[head & tail] bindings]
+        (if (symbol? head)
+          (do
+            (close)
+            (recur current {:symbol head :fns []} bindings tail))
+          (do
+            (current.fns.push head)
+            (recur bindings tail))))
+      (do
+        (close)
+        `(do ~@extends)))))
+
 (terr-macro try [opts & body]
   (var walker opts.walker
        env opts.env

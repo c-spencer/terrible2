@@ -1,6 +1,7 @@
 (ns terrible.parser)
 (refer terrible.js js)
 (refer terrible.ast ast)
+(refer terrible.core.extras)
 
 (var reserved-words ["break" "do" "instanceof" "typeof" "case" "else" "new",
                       "var" "catch" "finally" "return" "void" "continue" "for",
@@ -23,10 +24,72 @@
 
 (var munged-regex (new RegExp (+ "[" (-> (Object.keys munged-symbols)
                                          (.map #(+ "\\" %))
-                                         (.join "|")) "]")))
+                                         (.join "|")) "]") "g"))
+
+(def builtins {})
+
+(defn register-builtin [name f]
+  (set! (get builtins name) f))
+
+(defn builtin? [n] (get builtins n))
+(defn run-builtin [n args]
+  (.apply (get builtins n) nil args))
+
+(defmacro defbuiltin [n args & body]
+  `(register-builtin ~n.name (fn ~args ~@body)))
+
+(defbuiltin op+ [{:env env :walk walk} left right]
+  (ast/Binary (walk left env) "+" (walk right env)))
 
 (defn munge-symbol [string]
   (-> string
       (.replace #/\-/g "_")
       (.replace munged-regex #(+ "_" (get munged-symbols %) "_"))
       (.replace reserved-regex #(+ % "_"))))
+
+(defn list-handler [(head & tail) walk env]
+  (cond
+    (symbol? head)
+      (cond (builtin? head.name) (run-builtin head.name
+                                   (.concat [{:env env :walk walk}] tail))
+            :else                (ast/Seq []))
+    (list? head)
+      (ast/Call (walk head env) (tail.map #(walk %1 env)))
+    (keyword? head)
+      (ast/Member (walk tail.0 env) (ast/Literal head.name))
+    :else
+      (ast/Seq [])))
+
+(defn symbol-handler [node walk env]
+  (print "symbol")
+  (print node)
+  (ast/Seq []))
+
+(defprotocol ParseWalkable
+  (walk [node env]
+    (cond
+      (== node nil)              (ast/Literal nil)
+      (== (type node) "object")  (ast/Obj (map node #({:key %2 :value (walk %1 env)})))
+      :else                      (throw {:message "Unknown node kind for ParseWalkable"
+                                         :data node}))))
+
+(extend-protocol ParseWalkable
+  List      (walk [node env] (list-handler node walk env))
+  Symbol    (walk [node env] (symbol-handler node walk env))
+  Keyword   (walk [node env] (walk `(keyword ~node.name) env))
+  Array     (walk [node env] (ast/Arr (node.map #(walk %1 env))))
+  RegExp    (walk [node env] (ast/Literal node))
+  Number    (walk [node env] (ast/Literal node))
+  String    (walk [node env] (ast/Literal node)))
+
+; (ns repl.example)
+; (refer terrible.parser p)
+; (refer terrible.reader r)
+; (refer terrible.js js)
+; (refer terrible.ast ast)
+
+; (print (-> (r/read "(op+ 1 2)")
+;          (p/walk {})
+;          (ast/compile "statement" {})
+;          js/Program
+;          js/generate))
